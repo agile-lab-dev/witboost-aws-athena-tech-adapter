@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "athena-tech-adapter.name" . }}
+  labels:
+{{- include "athena-tech-adapter.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8888
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: {{ template "athena-tech-adapter.name" . }}

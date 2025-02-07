@@ -1,0 +1,81 @@
+dataProduct:
+  dataProductOwnerDisplayName: John Doe
+  devGroup: bigdata
+  environment: development
+  description: asdasd
+  billing: {}
+  kind: dataproduct
+  specific: {}
+  domain: finance
+  name: testMultiModule
+  version: 0.1.0-SNAPSHOT-2
+  components:
+    - name: bk
+      fullyQualifiedName: gluejob-0
+      description: job description
+      kind: workload
+      id: urn:dmb:cmp:gluejob-0
+      infrastructureTemplateId: urn:dmb:itm:glue-sp:0
+      dependsOn:
+        - urn:dmb:cmp:finance:exchange:0:raw-storage
+      specific:
+        region: eu-west-1
+        scriptName: helloworld.py
+        iamRole: arn:aws:iam::123456:role/gluetechadaptertest-role
+        timeout: 1
+        workerType: G.1X
+        executionClass: FLEX
+        numberOfWorkers: 2
+        storageAreaId: urn:dmb:cmp:finance:exchange:0:raw-storage
+        catalogName: glue_catalog
+        warehouseLocation: s3://some/warehouse/location
+      useCaseTemplateId: useCaseTemplateId1
+      componentOwner: agilelab
+      version: 0.0.0
+    - name: Raw storage
+      platform: AWS
+      id: urn:dmb:cmp:finance:exchange:0:raw-storage
+      description: test
+      shoppable: false
+      dependsOn: [ ]
+      useCaseTemplateId: urn:dmb:utm:aws-storage-s3-template:0.0.0
+      tags: [ ]
+      infrastructureTemplateId: urn:dmb:itm:aws-storage-s3-provisioner:0
+      technology: S3
+      consumable: false
+      version: 0.0.0
+      fullyQualifiedName: null
+      specific:
+        region: eu-west-1
+      kind: storage
+      info:
+        publicInfo:
+          location:
+            type: string
+            label: Location
+            value: s3://finance-cashflow-1977/subfolder
+        privateInfo:
+          location:
+            type: string
+            label: Location
+            value: s3://finance-cashflow-1977/subfolder
+          folder:
+            type: string
+            label: folder
+            value: subfolder
+          bucket:
+            type: string
+            label: bucket
+            value: finance-cashflow-1977
+  dataProductOwner: user:john.doe_foobar.it
+  fullyQualifiedName: aasdasd
+  infrastructureTemplateId: urn:dmb:itm:dataproduct-provisioner:1
+  maturity: null
+  domainId: urn:dmb:dmn:finance
+  tags: []
+  ownerGroup: john.doe_foobar.it
+  useCaseTemplateId: urn:dmb:utm:dataproduct-template:0.0.0
+  id: urn:dmb:dp:finance:testmultimodule:0
+  email: john.doe@foobar.it
+  informationSLA: null
+componentIdToProvision: urn:dmb:cmp:gluejob-0

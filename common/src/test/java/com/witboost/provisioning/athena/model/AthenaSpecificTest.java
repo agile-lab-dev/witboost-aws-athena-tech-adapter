@@ -28,7 +28,6 @@ public class AthenaSpecificTest {
 
     private AthenaSpecific createAthenaSpecific() {
         AthenaSpecific athenaSpecific = new AthenaSpecific();
-        athenaSpecific.setRegion("us-east-1");
         athenaSpecific.setStorageAreaId("area-001");
 
         AthenaTable athenaTable = new AthenaTable();
@@ -44,14 +43,6 @@ public class AthenaSpecificTest {
         athenaSpecific.setView(athenaView);
 
         return athenaSpecific;
-    }
-
-    @Test
-    public void testRegionNotBlank() {
-        athenaSpecific1.setRegion("");
-        Set<ConstraintViolation<AthenaSpecific>> violations = validator.validate(athenaSpecific1);
-        assertEquals(1, violations.size());
-        assertEquals("region", violations.iterator().next().getPropertyPath().toString());
     }
 
     @Test
@@ -81,14 +72,6 @@ public class AthenaSpecificTest {
     }
 
     @Test
-    public void testRegionNotNull() {
-        athenaSpecific1.setRegion(null);
-        Set<ConstraintViolation<AthenaSpecific>> violations = validator.validate(athenaSpecific1);
-        assertEquals(1, violations.size());
-        assertEquals("region", violations.iterator().next().getPropertyPath().toString());
-    }
-
-    @Test
     public void testStorageAreaIdNotNull() {
         athenaSpecific1.setStorageAreaId(null);
         Set<ConstraintViolation<AthenaSpecific>> violations = validator.validate(athenaSpecific1);
@@ -100,7 +83,6 @@ public class AthenaSpecificTest {
     @Test
     public void testDefaultValues() {
         assertNotNull(athenaSpecific1);
-        assertThat(athenaSpecific1.getRegion().id()).isNotBlank();
         assertThat(athenaSpecific1.getStorageAreaId()).isNotBlank();
         assertNotNull(athenaSpecific1.getSourceTable());
         assertNotNull(athenaSpecific1.getView());
@@ -108,7 +90,6 @@ public class AthenaSpecificTest {
 
     @Test
     public void testSettersAndGetters() {
-        assertEquals("us-east-1", athenaSpecific1.getRegion().id());
         assertEquals("area-001", athenaSpecific1.getStorageAreaId());
 
         AthenaTable athenaTable = athenaSpecific1.getSourceTable();

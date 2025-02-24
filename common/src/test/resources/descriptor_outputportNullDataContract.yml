@@ -82,14 +82,7 @@ dataProduct:
       creationDate: null
       startDate: null
       processDescription: null
-      dataContract:
-        schema:
-          - name: id
-            dataType: INT
-            tags: []
-          - name: name
-            dataType: STRING
-            tags: []
+      dataContract: null
       termsAndConditions: Can be used for production purposes.
       endpoint: null
       SLA:
@@ -108,6 +101,7 @@ dataProduct:
       sampleData: {}
       semanticLinking: []
       specific:
+        region: eu-west-1
         storageAreaId: urn:dmb:cmp:finance:exchange:0:raw-storage
         sourceTable:
           catalog: AWSDataCatalog

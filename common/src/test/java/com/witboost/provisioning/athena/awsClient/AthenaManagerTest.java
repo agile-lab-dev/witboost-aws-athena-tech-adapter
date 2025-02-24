@@ -5,20 +5,18 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.witboost.provisioning.athena.model.AthenaTable;
+import com.witboost.provisioning.athena.model.AthenaView;
 import com.witboost.provisioning.model.common.FailedOperation;
 import io.vavr.control.Either;
+import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.services.athena.AthenaClient;
-import software.amazon.awssdk.services.athena.model.Database;
-import software.amazon.awssdk.services.athena.model.ListDatabasesRequest;
-import software.amazon.awssdk.services.athena.model.ListDatabasesResponse;
-import software.amazon.awssdk.services.athena.model.ListTableMetadataRequest;
-import software.amazon.awssdk.services.athena.model.ListTableMetadataResponse;
-import software.amazon.awssdk.services.athena.model.TableMetadata;
+import software.amazon.awssdk.services.athena.model.*;
 
 class AthenaManagerTest {
 
@@ -28,6 +26,7 @@ class AthenaManagerTest {
     private final String catalog = "awsCatalog";
     private final String database = "testDatabase";
     private final String tableName = "testTable";
+    private final String outputLocation = "s3://fake-location";
 
     @BeforeEach
     void setUp() {
@@ -139,5 +138,152 @@ class AthenaManagerTest {
         assertTrue(
                 failedOperation.message().contains("An unexpected error occurred"),
                 "Expected error message to indicate an unexpected error");
+    }
+
+    @Test
+    void createDatabase_success_returnsRight() {
+        // Simulate successful query submission by returning a valid query execution ID.
+        StartQueryExecutionResponse response =
+                StartQueryExecutionResponse.builder().queryExecutionId("1234").build();
+        when(athenaClient.startQueryExecution(any(StartQueryExecutionRequest.class)))
+                .thenReturn(response);
+
+        Either<FailedOperation, Void> result =
+                athenaManager.createDatabase(athenaClient, outputLocation, catalog, database);
+        assertTrue(result.isRight(), "Expected createDatabase to succeed");
+    }
+
+    @Test
+    void createDatabase_AthenaException_returnsLeft() {
+        AthenaException athenaEx = org.mockito.Mockito.mock(AthenaException.class);
+        when(athenaEx.awsErrorDetails())
+                .thenReturn(software.amazon.awssdk.awscore.exception.AwsErrorDetails.builder()
+                        .errorMessage("Athena error occurred")
+                        .build());
+        when(athenaClient.startQueryExecution(any(StartQueryExecutionRequest.class)))
+                .thenThrow(athenaEx);
+
+        Either<FailedOperation, Void> result =
+                athenaManager.createDatabase(athenaClient, outputLocation, catalog, database);
+        assertTrue(result.isLeft(), "Expected createDatabase to fail due to AthenaException");
+        FailedOperation failure = result.getLeft();
+        assertTrue(
+                failure.message().contains("Athena-specific error during query submission"),
+                "Expected error message to mention Athena-specific error");
+    }
+
+    @Test
+    void createDatabase_genericException_returnsLeft() {
+        when(athenaClient.startQueryExecution(any(StartQueryExecutionRequest.class)))
+                .thenThrow(new RuntimeException("Generic exception"));
+
+        Either<FailedOperation, Void> result =
+                athenaManager.createDatabase(athenaClient, outputLocation, catalog, database);
+        assertTrue(result.isLeft(), "Expected createDatabase to fail due to generic exception");
+        FailedOperation failure = result.getLeft();
+        assertTrue(
+                failure.message().contains("An unexpected error occurred during query submission"),
+                "Expected error message to mention unexpected error");
+    }
+
+    @Test
+    void createTable_success_returnsRight() {
+        com.witboost.provisioning.model.Column column1 = new com.witboost.provisioning.model.Column();
+        column1.setName("id");
+        column1.setDataType("STRING");
+        com.witboost.provisioning.model.Column column2 = new com.witboost.provisioning.model.Column();
+        column2.setName("name");
+        column2.setDataType("STRING");
+        List<com.witboost.provisioning.model.Column> columns = List.of(column1, column2);
+
+        StartQueryExecutionResponse response = StartQueryExecutionResponse.builder()
+                .queryExecutionId("tableQueryId")
+                .build();
+        when(athenaClient.startQueryExecution(any(StartQueryExecutionRequest.class)))
+                .thenReturn(response);
+
+        Either<FailedOperation, Void> result =
+                athenaManager.createTable(athenaClient, outputLocation, catalog, database, tableName, columns);
+        assertTrue(result.isRight(), "Expected createTable to succeed");
+    }
+
+    @Test
+    void createView_success_returnsRight() {
+        AthenaTable athenaTable = new AthenaTable();
+        athenaTable.setCatalog(catalog);
+        athenaTable.setDatabase(database);
+        athenaTable.setName(tableName);
+
+        AthenaView athenaView = new AthenaView();
+        athenaView.setCatalog(catalog);
+        athenaView.setDatabase("viewDatabase");
+        athenaView.setName("testView");
+
+        com.witboost.provisioning.model.Column column1 = new com.witboost.provisioning.model.Column();
+        column1.setName("id");
+        column1.setDataType("STRING");
+        com.witboost.provisioning.model.Column column2 = new com.witboost.provisioning.model.Column();
+        column2.setName("name");
+        column2.setDataType("STRING");
+        List<com.witboost.provisioning.model.Column> columns = List.of(column1, column2);
+
+        StartQueryExecutionResponse response = StartQueryExecutionResponse.builder()
+                .queryExecutionId("viewQueryId")
+                .build();
+        when(athenaClient.startQueryExecution(any(StartQueryExecutionRequest.class)))
+                .thenReturn(response);
+
+        Either<FailedOperation, Void> result =
+                athenaManager.createView(athenaClient, outputLocation, athenaTable, athenaView, columns);
+        assertTrue(result.isRight(), "Expected createView to succeed");
+    }
+
+    @Test
+    void dropView_success_returnsRight() {
+        // Create a dummy AthenaView.
+        AthenaView athenaView = new AthenaView();
+        athenaView.setCatalog(catalog);
+        athenaView.setDatabase(database);
+        athenaView.setName("viewToDrop");
+
+        StartQueryExecutionResponse response = StartQueryExecutionResponse.builder()
+                .queryExecutionId("dropViewId")
+                .build();
+        when(athenaClient.startQueryExecution(any(StartQueryExecutionRequest.class)))
+                .thenReturn(response);
+
+        Either<FailedOperation, Void> result = athenaManager.dropView(athenaClient, outputLocation, athenaView);
+        assertTrue(result.isRight(), "Expected dropView to succeed");
+    }
+
+    @Test
+    void createColumnsListForSelectStatement_empty_returnsAsterisk() throws Exception {
+        // Use reflection to call the private method.
+        Method method = AthenaManager.class.getDeclaredMethod("createColumnsListForSelectStatement", List.class);
+        method.setAccessible(true);
+
+        // Call with an empty list.
+        @SuppressWarnings("unchecked")
+        String result = (String) method.invoke(athenaManager, Collections.emptyList());
+        assertEquals("*", result, "Expected '*' when column list is empty");
+    }
+
+    @Test
+    void createColumnsListForSelectStatement_nonEmpty_returnsCommaSeparatedList() throws Exception {
+        // Use reflection to call the private method.
+        Method method = AthenaManager.class.getDeclaredMethod("createColumnsListForSelectStatement", List.class);
+        method.setAccessible(true);
+
+        // Prepare a non-empty list of columns.
+        com.witboost.provisioning.model.Column column1 = new com.witboost.provisioning.model.Column();
+        column1.setName("id");
+        column1.setDataType("STRING");
+        com.witboost.provisioning.model.Column column2 = new com.witboost.provisioning.model.Column();
+        column2.setName("name");
+        column2.setDataType("STRING");
+        List<com.witboost.provisioning.model.Column> columns = List.of(column1, column2);
+        @SuppressWarnings("unchecked")
+        String result = (String) method.invoke(athenaManager, columns);
+        assertEquals("id, name", result, "Expected comma-separated column names");
     }
 }

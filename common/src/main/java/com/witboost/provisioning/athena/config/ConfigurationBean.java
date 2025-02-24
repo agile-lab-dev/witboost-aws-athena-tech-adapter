@@ -41,8 +41,11 @@ public class ConfigurationBean {
 
     @Bean
     public OutputPortProvisionService outputPortProvisionService(
-            AthenaManager athenaManager, BucketManager bucketManager) {
-        return new OutputPortProvisionService(this::getS3Client, this::getAthenaClient, athenaManager, bucketManager);
+            OutputPortValidationService outputPortValidationService,
+            AthenaManager athenaManager,
+            BucketManager bucketManager) {
+        return new OutputPortProvisionService(
+                outputPortValidationService, this::getS3Client, this::getAthenaClient, athenaManager, bucketManager);
     }
 
     @Bean

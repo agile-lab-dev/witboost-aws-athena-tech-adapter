@@ -28,7 +28,8 @@ class ConfigurationBeanTest {
 
     @Test
     void provisionBeanCreation() {
-        var outputPort = configurationBean.outputPortProvisionService(athenaManager, bucketManager);
+        var outputPort = configurationBean.outputPortProvisionService(
+                configurationBean.outputPortValidationService(), athenaManager, bucketManager);
         var bean = new ConfigurationBean().provisionConfiguration(outputPort);
 
         assertEquals(outputPort, bean.getOutputPortProvisionService());

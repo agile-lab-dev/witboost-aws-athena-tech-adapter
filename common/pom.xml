@@ -12,7 +12,7 @@
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
-        <aws.java.sdk.version>2.29.32</aws.java.sdk.version>
+        <aws.java.sdk.version>2.30.7</aws.java.sdk.version>
     </properties>
 
     <artifactId>common</artifactId>
@@ -115,13 +115,11 @@
             <version>${aws.java.sdk.version}</version>
         </dependency>
 
-        <!-- https://mvnrepository.com/artifact/software.amazon.awssdk/athena -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
-            <artifactId>glue</artifactId>
+            <artifactId>sts</artifactId>
             <version>${aws.java.sdk.version}</version>
         </dependency>
-
 
         <dependency>
             <groupId>org.jetbrains</groupId>

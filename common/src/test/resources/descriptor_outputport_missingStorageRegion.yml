@@ -61,10 +61,6 @@ dataProduct:
             type: string
             label: folder
             value: subfolder
-          bucket:
-            type: string
-            label: bucket
-            value: finance-cashflow-1977
     - name: Output Port
       id: urn:dmb:cmp:finance:exchange:0:outputport
       fullyQualifiedName: Finance - Exchange - version 0 - Output Port
@@ -85,17 +81,17 @@ dataProduct:
       dataContract:
         schema:
           - name: id
-            dataType: INT
+            dataType: STRING
             tags: []
           - name: name
             dataType: STRING
             tags: []
-      termsAndConditions: Can be used for production purposes.
-      endpoint: null
-      SLA:
-        intervalOfChange: 2BD
-        timeliness: 2BD
-        upTime: 99.9%
+        termsAndConditions: Can be used for production purposes.
+        endpoint: null
+        SLA:
+          intervalOfChange: 2BD
+          timeliness: 2BD
+          upTime: 99.9%
       dataSharingAgreement:
         purpose: Foundational data for downstream use cases.
         billing: None.

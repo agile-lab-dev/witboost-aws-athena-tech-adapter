@@ -7,15 +7,11 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import software.amazon.awssdk.regions.Region;
 
 @NoArgsConstructor
 @Getter
 @Setter
 public class AthenaSpecific extends Specific {
-
-    @NotBlank
-    private String region;
 
     @NotBlank
     private String storageAreaId;
@@ -27,8 +23,4 @@ public class AthenaSpecific extends Specific {
     @Valid
     @NotNull
     private AthenaView view;
-
-    public Region getRegion() {
-        return Region.of(this.region);
-    }
 }

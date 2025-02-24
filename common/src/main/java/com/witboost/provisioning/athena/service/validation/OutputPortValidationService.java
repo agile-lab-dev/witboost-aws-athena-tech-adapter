@@ -50,27 +50,37 @@ public class OutputPortValidationService implements ComponentValidationService {
         var athenaSpecific = RequestUtils.getAthenaSpecific(component.get());
         if (athenaSpecific.isLeft()) return Either.left(athenaSpecific.getLeft());
 
-        AthenaClient athenaClient =
-                athenaClientProvider.apply(athenaSpecific.get().getRegion());
-        String catalog = athenaSpecific.get().getSourceTable().getCatalog();
-        String database = athenaSpecific.get().getSourceTable().getDatabase();
-        String table = athenaSpecific.get().getSourceTable().getName();
+        if (operationType.equals(OperationType.PROVISION) || operationType.equals(OperationType.VALIDATE)) {
 
-        if (component.get().getDataContract() == null
-                || component.get().getDataContract().getSchema() == null) {
-            String error = String.format(
-                    "Validation error for output port '%s': the Data Contract or its schema is null. "
-                            + "Please define the required columns in the Data Contract schema.",
-                    component.get().getName());
-            logger.error(error);
-            return Either.left(new FailedOperation(error, List.of(new Problem(error))));
+            return RequestUtils.extractStorageAreaInfo(operationRequest, athenaSpecific.get())
+                    .flatMap(storageAreaInfo -> RequestUtils.extractStorageAreaRegion(storageAreaInfo)
+                            .flatMap(storageAreaRegion -> {
+                                AthenaClient athenaClient = athenaClientProvider.apply(Region.of(storageAreaRegion));
+                                String catalog =
+                                        athenaSpecific.get().getSourceTable().getCatalog();
+                                String database =
+                                        athenaSpecific.get().getSourceTable().getDatabase();
+                                String table =
+                                        athenaSpecific.get().getSourceTable().getName();
+
+                                if (component.get().getDataContract() == null
+                                        || component.get().getDataContract().getSchema() == null) {
+                                    String error = String.format(
+                                            "Validation error for output port '%s': the Data Contract or its schema is null. "
+                                                    + "Please define the required columns in the Data Contract schema.",
+                                            component.get().getName());
+                                    logger.error(error);
+                                    return Either.left(new FailedOperation(error, List.of(new Problem(error))));
+                                }
+                                return athenaManager
+                                        .checkDatabaseExists(athenaClient, catalog, database)
+                                        .flatMap(exists -> exists
+                                                ? validateTable(athenaClient, catalog, database, table, component.get())
+                                                : validateDataContractSchemaPresence(component.get(), table, database));
+                            }));
         }
 
-        return athenaManager
-                .checkDatabaseExists(athenaClient, catalog, database)
-                .flatMap(exists -> exists
-                        ? validateTable(athenaClient, catalog, database, table, component.get())
-                        : validateDataContractSchemaPresence(component.get(), table, database));
+        return Either.right(null);
     }
 
     private Either<FailedOperation, Void> validateTable(
@@ -84,12 +94,12 @@ public class OutputPortValidationService implements ComponentValidationService {
     }
 
     private Either<FailedOperation, Void> validateDataContractSchemaPresence(
-            OutputPort component, String table, String database) {
-        if (component.getDataContract().getSchema().isEmpty()) {
+            OutputPort outputPort, String table, String database) {
+        if (outputPort.getDataContract().getSchema().isEmpty()) {
             String error = String.format(
                     "Validation error for output port '%s': the source database '%s' and/or table '%s' do not exist, and no columns are defined in the output port's Data Contract schema. "
                             + "To resolve this issue, please ensure that the database and table are created or define the required columns in the Data Contract schema.",
-                    component.getName(), database, table);
+                    outputPort.getName(), database, table);
             logger.error(error);
             return Either.left(new FailedOperation(error, List.of(new Problem(error))));
         }
@@ -120,7 +130,7 @@ public class OutputPortValidationService implements ComponentValidationService {
 
         if (!errors.isEmpty()) {
             String error = String.format(
-                    "Error validating output port '%s': Some columns defined in the Data Contract are either missing from the source table or have mismatched types.",
+                    "Validation error for output port '%s': Some columns defined in the Data Contract are either missing from the source table or have mismatched types.",
                     componentName);
             return Either.left(new FailedOperation(error, List.of(new Problem(String.join("; ", errors)))));
         }

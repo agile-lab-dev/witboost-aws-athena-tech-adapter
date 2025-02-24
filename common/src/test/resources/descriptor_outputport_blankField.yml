@@ -108,7 +108,6 @@ dataProduct:
       sampleData: {}
       semanticLinking: []
       specific:
-        region: eu-west-1
         storageAreaId: urn:dmb:cmp:finance:exchange:0:raw-storage
         sourceTable:
           catalog: AWSDataCatalog

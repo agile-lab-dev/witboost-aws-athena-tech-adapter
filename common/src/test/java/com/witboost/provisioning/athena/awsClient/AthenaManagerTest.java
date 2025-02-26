@@ -5,8 +5,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.witboost.provisioning.athena.model.AthenaColumn;
 import com.witboost.provisioning.athena.model.AthenaTable;
 import com.witboost.provisioning.athena.model.AthenaView;
+import com.witboost.provisioning.athena.model.TableFormat;
 import com.witboost.provisioning.model.common.FailedOperation;
 import io.vavr.control.Either;
 import java.lang.reflect.Method;
@@ -188,13 +190,13 @@ class AthenaManagerTest {
 
     @Test
     void createTable_success_returnsRight() {
-        com.witboost.provisioning.model.Column column1 = new com.witboost.provisioning.model.Column();
+        AthenaColumn column1 = new AthenaColumn();
         column1.setName("id");
         column1.setDataType("STRING");
-        com.witboost.provisioning.model.Column column2 = new com.witboost.provisioning.model.Column();
+        AthenaColumn column2 = new AthenaColumn();
         column2.setName("name");
         column2.setDataType("STRING");
-        List<com.witboost.provisioning.model.Column> columns = List.of(column1, column2);
+        List<AthenaColumn> columns = List.of(column1, column2);
 
         StartQueryExecutionResponse response = StartQueryExecutionResponse.builder()
                 .queryExecutionId("tableQueryId")
@@ -202,8 +204,8 @@ class AthenaManagerTest {
         when(athenaClient.startQueryExecution(any(StartQueryExecutionRequest.class)))
                 .thenReturn(response);
 
-        Either<FailedOperation, Void> result =
-                athenaManager.createTable(athenaClient, outputLocation, catalog, database, tableName, columns);
+        Either<FailedOperation, Void> result = athenaManager.createTable(
+                athenaClient, outputLocation, catalog, database, tableName, TableFormat.ICEBERG, columns);
         assertTrue(result.isRight(), "Expected createTable to succeed");
     }
 
@@ -219,13 +221,13 @@ class AthenaManagerTest {
         athenaView.setDatabase("viewDatabase");
         athenaView.setName("testView");
 
-        com.witboost.provisioning.model.Column column1 = new com.witboost.provisioning.model.Column();
+        AthenaColumn column1 = new AthenaColumn();
         column1.setName("id");
         column1.setDataType("STRING");
-        com.witboost.provisioning.model.Column column2 = new com.witboost.provisioning.model.Column();
+        AthenaColumn column2 = new AthenaColumn();
         column2.setName("name");
         column2.setDataType("STRING");
-        List<com.witboost.provisioning.model.Column> columns = List.of(column1, column2);
+        List<AthenaColumn> columns = List.of(column1, column2);
 
         StartQueryExecutionResponse response = StartQueryExecutionResponse.builder()
                 .queryExecutionId("viewQueryId")

@@ -5,11 +5,7 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.witboost.provisioning.athena.model.AthenaSpecific;
-import com.witboost.provisioning.athena.model.AthenaTable;
-import com.witboost.provisioning.athena.model.AthenaView;
-import com.witboost.provisioning.model.DataContract;
-import com.witboost.provisioning.model.OutputPort;
+import com.witboost.provisioning.athena.model.*;
 import com.witboost.provisioning.model.Specific;
 import com.witboost.provisioning.model.Workload;
 import com.witboost.provisioning.model.common.FailedOperation;
@@ -30,7 +26,7 @@ class RequestUtilsTest {
     @Mock
     private OperationRequest<?, ? extends Specific> request;
 
-    private OutputPort outputPort;
+    private AthenaOutputPort outputPort;
     private AthenaSpecific athenaSpecific;
     private RequestUtils requestUtils;
     private ObjectMapper objectMapper;
@@ -44,13 +40,13 @@ class RequestUtilsTest {
     }
 
     private void initializeOutputPort() {
-        outputPort = new OutputPort<>();
+        outputPort = new AthenaOutputPort<>();
         outputPort.setName("op_component");
         outputPort.setKind("outputport");
         outputPort.setId("op_id");
         outputPort.setDescription("op_desc");
 
-        DataContract dataContract = new DataContract();
+        AthenaDataContract dataContract = new AthenaDataContract();
         dataContract.setSchema(new ArrayList<>());
         outputPort.setDataContract(dataContract);
 
@@ -73,36 +69,36 @@ class RequestUtilsTest {
     }
 
     @Test
-    void getOutputPort_shouldReturnSuccessfulResponse() {
-        var result = RequestUtils.getOutputPort(request);
+    void getAthenaOutputPort_shouldReturnSuccessfulResponse() {
+        var result = RequestUtils.getAthenaOutputPort(request);
         assert result.isRight();
         assert result.get().getName().equalsIgnoreCase("op_component");
     }
 
     @Test
-    void getOutputPortEmptyComponent_shouldReturnFailedOperation() {
+    void getAthenaOutputPortEmptyComponent_shouldReturnFailedOperation() {
         when(request.getComponent()).thenReturn(Optional.empty());
-        var result = RequestUtils.getOutputPort(request);
+        var result = RequestUtils.getAthenaOutputPort(request);
         assert result.isLeft();
         assert result.getLeft().message().contains("Component is missing");
     }
 
     @Test
-    void getOutputPortWrongComponentKind_shouldReturnFailedOperation() {
+    void getAthenaOutputPortWrongComponentKind_shouldReturnFailedOperation() {
         Workload workload = new Workload();
         workload.setKind("workload");
         when(request.getComponent()).thenReturn(Optional.of(workload));
-        var result = RequestUtils.getOutputPort(request);
+        var result = RequestUtils.getAthenaOutputPort(request);
         assert result.isLeft();
         assert result.getLeft().message().contains("Component null is not an OutputPort");
     }
 
     @Test
-    void getOutputPortWrongOutputPortKind_shouldReturnFailedOperation() {
+    void getOutputPortWrongAthenaOutputPortKind_shouldReturnFailedOperation() {
         Workload workload = new Workload();
         workload.setKind("outputport");
         when(request.getComponent()).thenReturn(Optional.of(workload));
-        var result = RequestUtils.getOutputPort(request);
+        var result = RequestUtils.getAthenaOutputPort(request);
         assert result.isLeft();
         assert result.getLeft().message().contains("Component null is not an OutputPort");
     }

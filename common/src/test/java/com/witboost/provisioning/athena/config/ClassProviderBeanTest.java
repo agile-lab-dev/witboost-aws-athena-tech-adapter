@@ -2,8 +2,8 @@ package com.witboost.provisioning.athena.config;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.witboost.provisioning.athena.model.AthenaOutputPort;
 import com.witboost.provisioning.athena.model.AthenaSpecific;
-import com.witboost.provisioning.model.OutputPort;
 import io.vavr.control.Option;
 import org.junit.jupiter.api.Test;
 
@@ -20,6 +20,6 @@ class ClassProviderBeanTest {
     @Test
     void defaultComponentProvider() {
         var componentProvider = classProviderBean.componentClassProvider();
-        assertEquals(Option.of(OutputPort.class), componentProvider.get("whatever"));
+        assertEquals(Option.of(AthenaOutputPort.class), componentProvider.get("whatever"));
     }
 }

@@ -107,6 +107,7 @@ dataProduct:
           catalog: AWSDataCatalog
           database: helloworld
           name: users
+          tableFormat: ICEBERG
         view:
           catalog: AWSDataCatalog
           database: helloworld

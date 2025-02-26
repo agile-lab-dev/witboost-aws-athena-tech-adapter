@@ -34,6 +34,7 @@ public class AthenaSpecificTest {
         athenaTable.setCatalog("catalog1");
         athenaTable.setDatabase("db1");
         athenaTable.setName("table1");
+        athenaTable.setTableFormat(TableFormat.ICEBERG);
         athenaSpecific.setSourceTable(athenaTable);
 
         AthenaView athenaView = new AthenaView();

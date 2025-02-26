@@ -10,17 +10,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.witboost.provisioning.athena.awsClient.AthenaManager;
 import com.witboost.provisioning.athena.config.ClassProviderBean;
 import com.witboost.provisioning.athena.config.ConfigurationBean;
-import com.witboost.provisioning.athena.model.AthenaSpecific;
-import com.witboost.provisioning.athena.model.AthenaTable;
-import com.witboost.provisioning.athena.model.AthenaView;
+import com.witboost.provisioning.athena.model.*;
 import com.witboost.provisioning.athena.utils.ResourceUtils;
 import com.witboost.provisioning.framework.openapi.model.DescriptorKind;
 import com.witboost.provisioning.framework.openapi.model.ProvisioningRequest;
 import com.witboost.provisioning.framework.service.validation.ValidationConfiguration;
 import com.witboost.provisioning.framework.service.validation.ValidationServiceImpl;
-import com.witboost.provisioning.model.DataContract;
 import com.witboost.provisioning.model.OperationType;
-import com.witboost.provisioning.model.OutputPort;
 import com.witboost.provisioning.model.Specific;
 import com.witboost.provisioning.model.common.FailedOperation;
 import com.witboost.provisioning.model.common.Problem;
@@ -73,7 +69,7 @@ class OutputPortValidationServiceTest {
     private OutputPortValidationService outputPortValidationService;
 
     private final String mockValidateEndpoint = "http://127.0.0.1:8888/v1/validate";
-    private OutputPort outputPort;
+    private AthenaOutputPort outputPort;
     private ClassProviderBean classProviderBean;
     private ValidationConfiguration validationConfiguration;
     private ValidationServiceImpl validationServiceImpl;
@@ -94,13 +90,13 @@ class OutputPortValidationServiceTest {
     }
 
     private void initializeOutputPort() {
-        outputPort = new OutputPort<>();
+        outputPort = new AthenaOutputPort();
         outputPort.setName("op_component");
         outputPort.setKind("outputport");
         outputPort.setId("op_id");
         outputPort.setDescription("op_desc");
 
-        DataContract dataContract = new DataContract();
+        AthenaDataContract dataContract = new AthenaDataContract();
         dataContract.setSchema(new ArrayList<>());
         outputPort.setDataContract(dataContract);
 
@@ -123,7 +119,6 @@ class OutputPortValidationServiceTest {
     }
 
     // Parsing tests using MockMvc
-
     // Test with a correct descriptor should return HTTP 200 and valid response content
     @Test
     void testParsingCorrectDescriptor_shouldReturnValidResponse() throws Exception {
@@ -401,6 +396,55 @@ class OutputPortValidationServiceTest {
 
         String responseContent = result.getResponse().getContentAsString();
         String expectedError = "Type mismatch for column 'id': expected INT (from DataContract)";
+        assert (responseContent.contains(expectedError));
+    }
+
+    // Test when there is a column type unsupported by ICEBERG - source Database exists
+    @Test
+    void testUnsupportedIcebergType_shouldReturnFailedOperation() throws Exception {
+
+        ProvisioningRequest provisioningRequest =
+                createProvisioningRequest("/descriptor_outputport_UnsupportedIcebergType.yml");
+
+        // Simulate that the database exists and table metadata is valid
+        when(athenaManager.checkDatabaseExists(any(AthenaClient.class), anyString(), anyString()))
+                .thenReturn(Either.right(true));
+        TableMetadata tableMetadata = TableMetadata.builder()
+                .name("users")
+                .columns(List.of(
+                        Column.builder().name("id").type("INT").build(),
+                        Column.builder().name("name").type("STRING").build()))
+                .build();
+        when(athenaManager.getTableMetadata(any(AthenaClient.class), anyString(), anyString(), anyString()))
+                .thenReturn(Either.right(Optional.of(tableMetadata)));
+
+        MvcResult result = mockMvc.perform(post(mockValidateEndpoint)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(provisioningRequest)))
+                .andReturn();
+
+        String responseContent = result.getResponse().getContentAsString();
+        String expectedError = "Unsupported data type for column name: VARCHAR";
+        assert (responseContent.contains(expectedError));
+    }
+
+    // Test when there is a column type unsupported by ICEBERG - source Database does not exist
+    @Test
+    void testUnsupportedIcebergTypeSourceDatabaseNotExists_shouldReturnFailedOperation() throws Exception {
+
+        ProvisioningRequest provisioningRequest =
+                createProvisioningRequest("/descriptor_outputport_UnsupportedIcebergType.yml");
+
+        when(athenaManager.checkDatabaseExists(any(AthenaClient.class), anyString(), anyString()))
+                .thenReturn(Either.right(false));
+
+        MvcResult result = mockMvc.perform(post(mockValidateEndpoint)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(provisioningRequest)))
+                .andReturn();
+
+        String responseContent = result.getResponse().getContentAsString();
+        String expectedError = "Unsupported data type for column name: VARCHAR";
         assert (responseContent.contains(expectedError));
     }
 

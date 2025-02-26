@@ -1,11 +1,15 @@
 package com.witboost.provisioning.athena.service.validation;
 
 import com.witboost.provisioning.athena.awsClient.AthenaManager;
+import com.witboost.provisioning.athena.model.AthenaColumn;
+import com.witboost.provisioning.athena.model.AthenaOutputPort;
+import com.witboost.provisioning.athena.model.AthenaSpecific;
+import com.witboost.provisioning.athena.model.TableFormat;
 import com.witboost.provisioning.athena.utils.RequestUtils;
+import com.witboost.provisioning.athena.utils.typechecker.TypeChecker;
+import com.witboost.provisioning.athena.utils.typechecker.TypeCheckerFactory;
 import com.witboost.provisioning.framework.service.validation.ComponentValidationService;
-import com.witboost.provisioning.model.Column;
 import com.witboost.provisioning.model.OperationType;
-import com.witboost.provisioning.model.OutputPort;
 import com.witboost.provisioning.model.Specific;
 import com.witboost.provisioning.model.common.FailedOperation;
 import com.witboost.provisioning.model.common.Problem;
@@ -44,7 +48,9 @@ public class OutputPortValidationService implements ComponentValidationService {
     @Override
     public Either<FailedOperation, Void> validate(
             @Valid OperationRequest<?, ? extends Specific> operationRequest, OperationType operationType) {
-        var component = RequestUtils.getOutputPort(operationRequest);
+
+        Either<FailedOperation, AthenaOutputPort<? extends Specific>> component =
+                RequestUtils.getAthenaOutputPort(operationRequest);
         if (component.isLeft()) return Either.left(component.getLeft());
 
         var athenaSpecific = RequestUtils.getAthenaSpecific(component.get());
@@ -72,11 +78,18 @@ public class OutputPortValidationService implements ComponentValidationService {
                                     logger.error(error);
                                     return Either.left(new FailedOperation(error, List.of(new Problem(error))));
                                 }
+
+                                // The cast is safe because getAthenaSpecific() ensures that component.get() is an
+                                // AthenaOutputPort<AthenaSpecific>
+                                AthenaOutputPort<AthenaSpecific> athenaOutputPort =
+                                        (AthenaOutputPort<AthenaSpecific>) component.get();
+
                                 return athenaManager
                                         .checkDatabaseExists(athenaClient, catalog, database)
                                         .flatMap(exists -> exists
-                                                ? validateTable(athenaClient, catalog, database, table, component.get())
-                                                : validateDataContractSchemaPresence(component.get(), table, database));
+                                                ? validateTable(
+                                                        athenaClient, catalog, database, table, athenaOutputPort)
+                                                : validateDataContractSchema(athenaOutputPort, table, database));
                             }));
         }
 
@@ -84,17 +97,28 @@ public class OutputPortValidationService implements ComponentValidationService {
     }
 
     private Either<FailedOperation, Void> validateTable(
-            AthenaClient athenaClient, String catalog, String database, String table, OutputPort component) {
+            AthenaClient athenaClient,
+            String catalog,
+            String database,
+            String table,
+            AthenaOutputPort<AthenaSpecific> component) {
+
+        Either<FailedOperation, AthenaSpecific> athenaSpecific = RequestUtils.getAthenaSpecific(component);
+        if (athenaSpecific.isLeft()) return Either.left(athenaSpecific.getLeft());
+
         return athenaManager
                 .getTableMetadata(athenaClient, catalog, database, table)
                 .flatMap(metadataOpt -> metadataOpt.isPresent()
                         ? validateColumnSchema(
-                                component.getDataContract().getSchema(), metadataOpt.get(), component.getName())
-                        : validateDataContractSchemaPresence(component, table, database));
+                                component.getDataContract().getSchema(),
+                                athenaSpecific.get().getSourceTable().getTableFormat(),
+                                metadataOpt.get(),
+                                component.getName())
+                        : validateDataContractSchema(component, table, database));
     }
 
-    private Either<FailedOperation, Void> validateDataContractSchemaPresence(
-            OutputPort outputPort, String table, String database) {
+    private Either<FailedOperation, Void> validateDataContractSchema(
+            AthenaOutputPort<AthenaSpecific> outputPort, String table, String database) {
         if (outputPort.getDataContract().getSchema().isEmpty()) {
             String error = String.format(
                     "Validation error for output port '%s': the source database '%s' and/or table '%s' do not exist, and no columns are defined in the output port's Data Contract schema. "
@@ -103,11 +127,24 @@ public class OutputPortValidationService implements ComponentValidationService {
             logger.error(error);
             return Either.left(new FailedOperation(error, List.of(new Problem(error))));
         }
+
+        TypeChecker typeChecker = TypeCheckerFactory.getTypeChecker(
+                outputPort.getSpecific().getSourceTable().getTableFormat());
+
+        for (AthenaColumn schemaColumn : outputPort.getDataContract().getSchema()) {
+            Either<FailedOperation, String> schemaType = typeChecker.resolveColumnType(schemaColumn);
+            if (schemaType.isLeft()) return Either.left(schemaType.getLeft());
+        }
+
         return Either.right(null);
     }
 
     private Either<FailedOperation, Void> validateColumnSchema(
-            List<Column> schemaColumns, TableMetadata tableMetadata, String componentName) {
+            List<AthenaColumn> schemaColumns,
+            TableFormat tableFormat,
+            TableMetadata tableMetadata,
+            String componentName) {
+
         Map<String, String> athenaColumns = tableMetadata.columns().stream()
                 .collect(Collectors.toMap(
                         software.amazon.awssdk.services.athena.model.Column::name,
@@ -115,16 +152,24 @@ public class OutputPortValidationService implements ComponentValidationService {
 
         List<String> errors = new ArrayList<>();
 
-        for (Column schemaColumn : schemaColumns) {
+        TypeChecker typeChecker = TypeCheckerFactory.getTypeChecker(tableFormat);
+
+        for (AthenaColumn schemaColumn : schemaColumns) {
             String columnName = schemaColumn.getName();
-            String schemaType = schemaColumn.getDataType();
+
+            Either<FailedOperation, String> schemaType = typeChecker.resolveColumnType(schemaColumn);
+            if (schemaType.isLeft()) return Either.left(schemaType.getLeft());
 
             if (!athenaColumns.containsKey(columnName)) {
-                errors.add(String.format("Column '%s' not found in source table", columnName));
-            } else if (!athenaColumns.get(columnName).equalsIgnoreCase(schemaType)) {
-                errors.add(String.format(
+                String e = String.format("Column '%s' not found in source table", columnName);
+                logger.error(e);
+                errors.add(e);
+            } else if (!athenaColumns.get(columnName).equalsIgnoreCase(schemaType.get())) {
+                String e = String.format(
                         "Type mismatch for column '%s': expected %s (from DataContract), found %s",
-                        columnName, schemaType, athenaColumns.get(columnName)));
+                        columnName, schemaType.get(), athenaColumns.get(columnName));
+                logger.error(e);
+                errors.add(e);
             }
         }
 

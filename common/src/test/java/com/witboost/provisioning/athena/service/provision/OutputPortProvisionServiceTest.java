@@ -8,12 +8,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.witboost.provisioning.athena.awsClient.AthenaManager;
-import com.witboost.provisioning.athena.awsClient.BucketManager;
 import com.witboost.provisioning.athena.config.ClassProviderBean;
 import com.witboost.provisioning.athena.config.ConfigurationBean;
 import com.witboost.provisioning.athena.model.AthenaSpecific;
 import com.witboost.provisioning.athena.model.AthenaTable;
 import com.witboost.provisioning.athena.model.AthenaView;
+import com.witboost.provisioning.athena.model.TableFormat;
 import com.witboost.provisioning.athena.service.validation.OutputPortValidationService;
 import com.witboost.provisioning.athena.utils.ResourceUtils;
 import com.witboost.provisioning.framework.openapi.model.DescriptorKind;
@@ -79,9 +79,6 @@ class OutputPortProvisionServiceTest {
 
     @MockitoBean
     private AthenaManager athenaManager;
-
-    @MockitoBean
-    private BucketManager bucketManager;
 
     @MockitoBean
     private OutputPortValidationService outputPortValidationService;
@@ -152,8 +149,6 @@ class OutputPortProvisionServiceTest {
 
         when(outputPortValidationService.validate(any(OperationRequest.class), eq(OperationType.PROVISION)))
                 .thenReturn(Either.right(null));
-        when(bucketManager.createFolder(any(S3Client.class), anyString(), anyString()))
-                .thenReturn(Either.right(null));
         when(athenaManager.checkDatabaseExists(any(AthenaClient.class), anyString(), anyString()))
                 .thenReturn(Either.right(false));
         when(athenaManager.createDatabase(any(AthenaClient.class), anyString(), anyString(), anyString()))
@@ -161,7 +156,13 @@ class OutputPortProvisionServiceTest {
         when(athenaManager.getTableMetadata(any(AthenaClient.class), anyString(), anyString(), anyString()))
                 .thenReturn(Either.right(Optional.empty()));
         when(athenaManager.createTable(
-                        any(AthenaClient.class), anyString(), anyString(), anyString(), anyString(), anyList()))
+                        any(AthenaClient.class),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(TableFormat.class),
+                        anyList()))
                 .thenReturn(Either.right(null));
         when(athenaManager.createView(
                         any(AthenaClient.class), anyString(), any(AthenaTable.class), any(AthenaView.class), anyList()))
@@ -184,8 +185,6 @@ class OutputPortProvisionServiceTest {
 
         when(outputPortValidationService.validate(any(OperationRequest.class), eq(OperationType.PROVISION)))
                 .thenReturn(Either.right(null));
-        when(bucketManager.createFolder(any(S3Client.class), anyString(), anyString()))
-                .thenReturn(Either.right(null));
         when(athenaManager.checkDatabaseExists(any(AthenaClient.class), anyString(), anyString()))
                 .thenReturn(Either.right(false));
         when(athenaManager.createDatabase(any(AthenaClient.class), anyString(), anyString(), anyString()))
@@ -199,7 +198,13 @@ class OutputPortProvisionServiceTest {
         when(athenaManager.getTableMetadata(any(AthenaClient.class), anyString(), anyString(), anyString()))
                 .thenReturn(Either.right(Optional.of(tableMetadata)));
         when(athenaManager.createTable(
-                        any(AthenaClient.class), anyString(), anyString(), anyString(), anyString(), anyList()))
+                        any(AthenaClient.class),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(TableFormat.class),
+                        anyList()))
                 .thenReturn(Either.right(null));
         when(athenaManager.createView(
                         any(AthenaClient.class), anyString(), any(AthenaTable.class), any(AthenaView.class), anyList()))
@@ -274,37 +279,12 @@ class OutputPortProvisionServiceTest {
         assertTrue(result.getResponse().getContentAsString().contains("Validation error"));
     }
 
-    // S3 folder creation failure: simulate a failure when creating the outputLocation in S3 bucket.
-    @Test
-    void testProvisionBucketFolderCreationFailure_shouldReturnFailedOperation() throws Exception {
-        ProvisioningRequest provisioningRequest = createProvisioningRequest("/descriptor_outputport.yml");
-
-        // Validation passes
-        when(outputPortValidationService.validate(any(OperationRequest.class), eq(OperationType.PROVISION)))
-                .thenReturn(Either.right(null));
-        // Simulate folder creation failure
-        FailedOperation folderFailure = new FailedOperation(
-                "Bucket folder creation error", Collections.singletonList(new Problem("Bucket folder error")));
-        when(bucketManager.createFolder(any(S3Client.class), anyString(), anyString()))
-                .thenReturn(Either.left(folderFailure));
-
-        MvcResult result = mockMvc.perform(post(mockProvisionEndpoint)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(provisioningRequest)))
-                .andReturn();
-
-        assertEquals(400, result.getResponse().getStatus());
-        assertTrue(result.getResponse().getContentAsString().contains("Bucket folder creation error"));
-    }
-
     // Database creation failure: simulate a failure during the database creation step.
     @Test
     void testProvisionDatabaseCreationFailure_shouldReturnFailedOperation() throws Exception {
         ProvisioningRequest provisioningRequest = createProvisioningRequest("/descriptor_outputport.yml");
 
         when(outputPortValidationService.validate(any(OperationRequest.class), eq(OperationType.PROVISION)))
-                .thenReturn(Either.right(null));
-        when(bucketManager.createFolder(any(S3Client.class), anyString(), anyString()))
                 .thenReturn(Either.right(null));
         // Simulate that the database does not exist and creation returns an error.
         FailedOperation dbFailure = new FailedOperation(
@@ -330,8 +310,6 @@ class OutputPortProvisionServiceTest {
 
         when(outputPortValidationService.validate(any(OperationRequest.class), eq(OperationType.PROVISION)))
                 .thenReturn(Either.right(null));
-        when(bucketManager.createFolder(any(S3Client.class), anyString(), anyString()))
-                .thenReturn(Either.right(null));
         // Simulate that the database exists.
         when(athenaManager.checkDatabaseExists(any(AthenaClient.class), anyString(), anyString()))
                 .thenReturn(Either.right(true));
@@ -341,7 +319,13 @@ class OutputPortProvisionServiceTest {
         FailedOperation tableFailure = new FailedOperation(
                 "Table creation error", Collections.singletonList(new Problem("Table creation error")));
         when(athenaManager.createTable(
-                        any(AthenaClient.class), anyString(), anyString(), anyString(), anyString(), anyList()))
+                        any(AthenaClient.class),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(TableFormat.class),
+                        anyList()))
                 .thenReturn(Either.left(tableFailure));
 
         MvcResult result = mockMvc.perform(post(mockProvisionEndpoint)
@@ -360,15 +344,19 @@ class OutputPortProvisionServiceTest {
 
         when(outputPortValidationService.validate(any(OperationRequest.class), eq(OperationType.PROVISION)))
                 .thenReturn(Either.right(null));
-        when(bucketManager.createFolder(any(S3Client.class), anyString(), anyString()))
-                .thenReturn(Either.right(null));
         when(athenaManager.checkDatabaseExists(any(AthenaClient.class), anyString(), anyString()))
                 .thenReturn(Either.right(true));
         // Simulate that the table does not exist, so createTable is called and succeeds.
         when(athenaManager.getTableMetadata(any(AthenaClient.class), anyString(), anyString(), anyString()))
                 .thenReturn(Either.right(Optional.empty()));
         when(athenaManager.createTable(
-                        any(AthenaClient.class), anyString(), anyString(), anyString(), anyString(), anyList()))
+                        any(AthenaClient.class),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(TableFormat.class),
+                        anyList()))
                 .thenReturn(Either.right(null));
         // Simulate failure during view creation.
         FailedOperation viewFailure = new FailedOperation(
@@ -393,8 +381,6 @@ class OutputPortProvisionServiceTest {
         ProvisioningRequest provisioningRequest = createProvisioningRequest("/descriptor_outputport.yml");
 
         when(outputPortValidationService.validate(any(OperationRequest.class), eq(OperationType.UNPROVISION)))
-                .thenReturn(Either.right(null));
-        when(bucketManager.createFolder(any(S3Client.class), anyString(), anyString()))
                 .thenReturn(Either.right(null));
         when(athenaManager.dropView(any(AthenaClient.class), anyString(), any(AthenaView.class)))
                 .thenReturn(Either.right(null));
@@ -432,8 +418,6 @@ class OutputPortProvisionServiceTest {
         ProvisioningRequest provisioningRequest = createProvisioningRequest("/descriptor_outputport.yml");
 
         when(outputPortValidationService.validate(any(OperationRequest.class), eq(OperationType.UNPROVISION)))
-                .thenReturn(Either.right(null));
-        when(bucketManager.createFolder(any(S3Client.class), anyString(), anyString()))
                 .thenReturn(Either.right(null));
         FailedOperation dropFailure =
                 new FailedOperation("Drop view error", Collections.singletonList(new Problem("Drop view error")));

@@ -1,7 +1,6 @@
 package com.witboost.provisioning.athena.config;
 
 import com.witboost.provisioning.athena.awsClient.AthenaManager;
-import com.witboost.provisioning.athena.awsClient.BucketManager;
 import com.witboost.provisioning.athena.service.provision.OutputPortProvisionService;
 import com.witboost.provisioning.athena.service.validation.OutputPortValidationService;
 import com.witboost.provisioning.framework.service.ProvisionConfiguration;
@@ -13,7 +12,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.athena.AthenaClient;
-import software.amazon.awssdk.services.s3.S3Client;
 
 @Configuration
 public class ConfigurationBean {
@@ -21,10 +19,6 @@ public class ConfigurationBean {
     @Autowired
     private AthenaManager athenaManager;
 
-    @Autowired
-    private BucketManager bucketManager;
-
-    private final Map<Region, S3Client> s3ClientCache = new ConcurrentHashMap<>();
     private final Map<Region, AthenaClient> athenaClientCache = new ConcurrentHashMap<>();
 
     @Bean
@@ -41,11 +35,8 @@ public class ConfigurationBean {
 
     @Bean
     public OutputPortProvisionService outputPortProvisionService(
-            OutputPortValidationService outputPortValidationService,
-            AthenaManager athenaManager,
-            BucketManager bucketManager) {
-        return new OutputPortProvisionService(
-                outputPortValidationService, this::getS3Client, this::getAthenaClient, athenaManager, bucketManager);
+            OutputPortValidationService outputPortValidationService, AthenaManager athenaManager) {
+        return new OutputPortProvisionService(outputPortValidationService, this::getAthenaClient, athenaManager);
     }
 
     @Bean
@@ -53,11 +44,6 @@ public class ConfigurationBean {
         return ProvisionConfiguration.builder()
                 .outputPortProvisionService(outputPortProvisionService)
                 .build();
-    }
-
-    protected S3Client getS3Client(Region region) {
-        return s3ClientCache.computeIfAbsent(
-                region, r -> S3Client.builder().region(r).build());
     }
 
     public AthenaClient getAthenaClient(Region region) {

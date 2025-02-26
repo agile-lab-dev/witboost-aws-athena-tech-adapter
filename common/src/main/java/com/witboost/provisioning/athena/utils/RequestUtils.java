@@ -1,8 +1,8 @@
 package com.witboost.provisioning.athena.utils;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.witboost.provisioning.athena.model.AthenaOutputPort;
 import com.witboost.provisioning.athena.model.AthenaSpecific;
-import com.witboost.provisioning.model.OutputPort;
 import com.witboost.provisioning.model.Specific;
 import com.witboost.provisioning.model.common.FailedOperation;
 import com.witboost.provisioning.model.common.Problem;
@@ -21,7 +21,7 @@ public class RequestUtils {
 
     private static final Logger logger = LoggerFactory.getLogger(RequestUtils.class);
 
-    public static Either<FailedOperation, OutputPort<? extends Specific>> getOutputPort(
+    public static Either<FailedOperation, AthenaOutputPort<? extends Specific>> getAthenaOutputPort(
             OperationRequest<?, ? extends Specific> operationRequest) {
 
         var component = operationRequest.getComponent();
@@ -33,7 +33,7 @@ public class RequestUtils {
         }
 
         if (component.get().getKind().equalsIgnoreCase("outputport")
-                && component.get() instanceof OutputPort<? extends Specific> op) return Either.right(op);
+                && component.get() instanceof AthenaOutputPort<? extends Specific> op) return Either.right(op);
 
         String error = String.format(
                 "Invalid operation request: Component %s is not an OutputPort. Request: %s",
@@ -43,7 +43,7 @@ public class RequestUtils {
     }
 
     public static Either<FailedOperation, AthenaSpecific> getAthenaSpecific(
-            com.witboost.provisioning.model.Component<? extends Specific> component) {
+            AthenaOutputPort<? extends Specific> component) {
 
         var componentSpecific = component.getSpecific();
 

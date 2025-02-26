@@ -2,13 +2,13 @@ package com.witboost.provisioning.athena.service.provision;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.witboost.provisioning.athena.awsClient.AthenaManager;
-import com.witboost.provisioning.athena.awsClient.BucketManager;
+import com.witboost.provisioning.athena.model.AthenaColumn;
 import com.witboost.provisioning.athena.model.AthenaTable;
 import com.witboost.provisioning.athena.model.AthenaView;
+import com.witboost.provisioning.athena.model.TableFormat;
 import com.witboost.provisioning.athena.service.validation.OutputPortValidationService;
 import com.witboost.provisioning.athena.utils.RequestUtils;
 import com.witboost.provisioning.framework.service.ProvisionService;
-import com.witboost.provisioning.model.Column;
 import com.witboost.provisioning.model.OperationType;
 import com.witboost.provisioning.model.Specific;
 import com.witboost.provisioning.model.common.FailedOperation;
@@ -26,30 +26,23 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.athena.AthenaClient;
-import software.amazon.awssdk.services.s3.S3Client;
 
 @Service
 public class OutputPortProvisionService implements ProvisionService {
 
     private final Logger logger = LoggerFactory.getLogger(OutputPortProvisionService.class);
 
-    private final Function<Region, S3Client> s3ClientProvider;
     private final Function<Region, AthenaClient> athenaClientProvider;
     private final AthenaManager athenaManager;
-    private final BucketManager bucketManager;
     private final OutputPortValidationService outputPortValidationService;
 
     public OutputPortProvisionService(
             OutputPortValidationService outputPortValidationService,
-            Function<Region, S3Client> s3ClientProvider,
             Function<Region, AthenaClient> athenaClientProvider,
-            AthenaManager athenaManager,
-            BucketManager bucketManager) {
+            AthenaManager athenaManager) {
         this.outputPortValidationService = outputPortValidationService;
-        this.s3ClientProvider = s3ClientProvider;
         this.athenaClientProvider = athenaClientProvider;
         this.athenaManager = athenaManager;
-        this.bucketManager = bucketManager;
     }
 
     @Override
@@ -58,7 +51,7 @@ public class OutputPortProvisionService implements ProvisionService {
 
         return outputPortValidationService
                 .validate(operationRequest, OperationType.PROVISION)
-                .flatMap(ignored -> RequestUtils.getOutputPort(operationRequest)
+                .flatMap(ignored -> RequestUtils.getAthenaOutputPort(operationRequest)
                         .flatMap(outputPort -> RequestUtils.getAthenaSpecific(outputPort)
                                 .flatMap(athenaSpecific -> RequestUtils.extractStorageAreaInfo(
                                                 operationRequest, athenaSpecific)
@@ -67,13 +60,11 @@ public class OutputPortProvisionService implements ProvisionService {
                                                 .flatMap(storageAreaRegion -> {
                                                     AthenaClient athenaClient =
                                                             athenaClientProvider.apply(Region.of(storageAreaRegion));
-                                                    S3Client s3Client =
-                                                            s3ClientProvider.apply(Region.of(storageAreaRegion));
 
                                                     AthenaTable sourceTable = athenaSpecific.getSourceTable();
                                                     AthenaView targetView = athenaSpecific.getView();
 
-                                                    return createOutputLocation(storageAreaInfo, outputPort, s3Client)
+                                                    return createOutputLocation(storageAreaInfo, outputPort)
                                                             .flatMap(outputLocation -> createDatabaseIfNotExists(
                                                                             athenaClient,
                                                                             outputLocation,
@@ -90,6 +81,7 @@ public class OutputPortProvisionService implements ProvisionService {
                                                                             sourceTable.getCatalog(),
                                                                             sourceTable.getDatabase(),
                                                                             sourceTable.getName(),
+                                                                            sourceTable.getTableFormat(),
                                                                             outputPort
                                                                                     .getDataContract()
                                                                                     .getSchema()))
@@ -135,7 +127,7 @@ public class OutputPortProvisionService implements ProvisionService {
 
         return outputPortValidationService
                 .validate(operationRequest, OperationType.UNPROVISION)
-                .flatMap(ignored -> RequestUtils.getOutputPort(operationRequest)
+                .flatMap(ignored -> RequestUtils.getAthenaOutputPort(operationRequest)
                         .flatMap(outputPort -> RequestUtils.getAthenaSpecific(outputPort)
                                 .flatMap(athenaSpecific -> RequestUtils.extractStorageAreaInfo(
                                                 operationRequest, athenaSpecific)
@@ -144,11 +136,9 @@ public class OutputPortProvisionService implements ProvisionService {
                                                 .flatMap(storageAreaRegion -> {
                                                     AthenaClient athenaClient =
                                                             athenaClientProvider.apply(Region.of(storageAreaRegion));
-                                                    S3Client s3Client =
-                                                            s3ClientProvider.apply(Region.of(storageAreaRegion));
                                                     AthenaView athenaView = athenaSpecific.getView();
 
-                                                    return createOutputLocation(storageAreaInfo, outputPort, s3Client)
+                                                    return createOutputLocation(storageAreaInfo, outputPort)
                                                             .flatMap(outputLocation -> athenaManager.dropView(
                                                                     athenaClient, outputLocation, athenaView))
                                                             .map(ignored2 -> {
@@ -192,13 +182,15 @@ public class OutputPortProvisionService implements ProvisionService {
             String catalog,
             String database,
             String name,
-            List<Column> schema) {
+            TableFormat tableFormat,
+            List<AthenaColumn> schema) {
 
         return athenaManager
                 .getTableMetadata(athenaClient, catalog, database, name)
                 .flatMap(metadata -> {
                     if (metadata.isEmpty()) {
-                        return athenaManager.createTable(athenaClient, outputLocation, catalog, database, name, schema);
+                        return athenaManager.createTable(
+                                athenaClient, outputLocation, catalog, database, name, tableFormat, schema);
                     } else {
                         return Either.right(null);
                     }
@@ -210,7 +202,7 @@ public class OutputPortProvisionService implements ProvisionService {
             String outputLocation,
             AthenaTable athenaTable,
             AthenaView athenaView,
-            List<Column> columns) {
+            List<AthenaColumn> columns) {
 
         return athenaManager.createView(athenaClient, outputLocation, athenaTable, athenaView, columns);
     }
@@ -243,15 +235,17 @@ public class OutputPortProvisionService implements ProvisionService {
     }
 
     private Either<FailedOperation, String> createOutputLocation(
-            JsonNode storageAreaInfo,
-            com.witboost.provisioning.model.Component<? extends Specific> component,
-            S3Client s3Client) {
+            JsonNode storageAreaInfo, com.witboost.provisioning.model.Component<? extends Specific> component) {
 
-        return extractBucketName(storageAreaInfo).flatMap(bucket -> {
-            String folderName = extractFolderName(component.getId());
-            return bucketManager
-                    .createFolder(s3Client, bucket, folderName)
-                    .map(ignored -> buildS3Url(bucket, folderName));
-        });
+        String[] componentIdParts = component.getId().split(":");
+        String dpVersion = componentIdParts[componentIdParts.length - 2];
+        String formattedComponentName = componentIdParts[componentIdParts.length - 1];
+        String folderPath = "v" + dpVersion + "/athena/" + formattedComponentName;
+
+        Either<FailedOperation, String> bucketName = extractBucketName(storageAreaInfo);
+        if (bucketName.isLeft()) return Either.left(bucketName.getLeft());
+
+        String folderName = extractFolderName(component.getId());
+        return Either.right(buildS3Url(bucketName.get(), folderPath));
     }
 }

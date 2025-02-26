@@ -1,7 +1,11 @@
 package com.witboost.provisioning.athena.awsClient;
 
+import com.witboost.provisioning.athena.model.AthenaColumn;
 import com.witboost.provisioning.athena.model.AthenaTable;
 import com.witboost.provisioning.athena.model.AthenaView;
+import com.witboost.provisioning.athena.model.TableFormat;
+import com.witboost.provisioning.athena.utils.AthenaTableSQLGenerator;
+import com.witboost.provisioning.athena.utils.typechecker.TypeCheckerFactory;
 import com.witboost.provisioning.model.Column;
 import com.witboost.provisioning.model.common.FailedOperation;
 import com.witboost.provisioning.model.common.Problem;
@@ -12,7 +16,6 @@ import jakarta.validation.constraints.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import lombok.NoArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -214,19 +217,15 @@ public class AthenaManager {
             @NotBlank String catalog,
             @NotBlank String database,
             @NotBlank String name,
-            @Valid @NotNull List<Column> schema) {
+            @NotBlank TableFormat tableFormat,
+            @Valid @NotNull List<AthenaColumn> schema) {
 
-        String columns = schema.stream()
-                .map(col -> String.format("%s %s", col.getName(), col.getDataType()))
-                .collect(Collectors.joining(", "));
-
-        String query = String.format(
-                "CREATE TABLE IF NOT EXISTS %s.%s (%s) LOCATION '%s' TBLPROPERTIES ( 'table_type' = 'ICEBERG' );",
-                database, name, columns, outputLocation);
-
+        AthenaTableSQLGenerator athenaTableSQLGenerator =
+                new AthenaTableSQLGenerator(TypeCheckerFactory.getTypeChecker(tableFormat));
         logger.info("Starting creation of table '{}' in database '{}'", name, database);
-        logger.debug("Table '{}' schema: {}", name, columns);
-        return executeDDL(athenaClient, outputLocation, catalog, query);
+        return athenaTableSQLGenerator
+                .generateCreateTableSQL(database, name, tableFormat.name(), outputLocation, schema)
+                .flatMap(query -> executeDDL(athenaClient, outputLocation, catalog, query));
     }
 
     /**
@@ -244,7 +243,7 @@ public class AthenaManager {
             @NotBlank String outputLocation,
             @Valid @NotNull AthenaTable athenaTable,
             @Valid @NotNull AthenaView athenaView,
-            @Valid @NotNull List<Column> columns) {
+            @Valid @NotNull List<AthenaColumn> columns) {
 
         String columnList = createColumnsListForSelectStatement(columns);
 
@@ -279,7 +278,7 @@ public class AthenaManager {
         return executeDDL(athenaClient, outputLocation, athenaView.getCatalog(), query);
     }
 
-    private String createColumnsListForSelectStatement(List<Column> columnList) {
+    private String createColumnsListForSelectStatement(List<AthenaColumn> columnList) {
 
         if (columnList.isEmpty()) return "*";
 

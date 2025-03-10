@@ -42,6 +42,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.athena.AthenaClient;
 import software.amazon.awssdk.services.athena.model.Column;
 import software.amazon.awssdk.services.athena.model.TableMetadata;
+import software.amazon.awssdk.services.sts.StsClient;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -64,6 +65,9 @@ class OutputPortValidationServiceTest {
 
     @MockitoBean
     private AthenaManager athenaManager;
+
+    @MockitoBean
+    StsClient stsClient;
 
     @Autowired
     private OutputPortValidationService outputPortValidationService;

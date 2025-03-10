@@ -2,6 +2,7 @@ package com.witboost.provisioning.athena.service.provision;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.witboost.provisioning.athena.awsClient.AthenaManager;
+import com.witboost.provisioning.athena.awsClient.LakeFormationManager;
 import com.witboost.provisioning.athena.model.AthenaColumn;
 import com.witboost.provisioning.athena.model.AthenaTable;
 import com.witboost.provisioning.athena.model.AthenaView;
@@ -23,26 +24,45 @@ import java.util.Optional;
 import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.athena.AthenaClient;
+import software.amazon.awssdk.services.glue.GlueClient;
+import software.amazon.awssdk.services.lakeformation.LakeFormationClient;
+import software.amazon.awssdk.services.sts.StsClient;
 
 @Service
 public class OutputPortProvisionService implements ProvisionService {
 
     private final Logger logger = LoggerFactory.getLogger(OutputPortProvisionService.class);
 
-    private final Function<Region, AthenaClient> athenaClientProvider;
-    private final AthenaManager athenaManager;
+    @Value("${enforceLakeFormation: false}")
+    private String enforceLakeFormation;
+
     private final OutputPortValidationService outputPortValidationService;
+    private final Function<Region, AthenaClient> athenaClientProvider;
+    private final Function<Region, LakeFormationClient> lakeFormationClientProvider;
+    private final Function<Region, GlueClient> glueClientProvider;
+    private final AthenaManager athenaManager;
+    private final LakeFormationManager lakeFormationManager;
+    private final StsClient stsClient;
 
     public OutputPortProvisionService(
             OutputPortValidationService outputPortValidationService,
             Function<Region, AthenaClient> athenaClientProvider,
-            AthenaManager athenaManager) {
+            Function<Region, LakeFormationClient> lakeFormationClientProvider,
+            Function<Region, GlueClient> glueClientProvider,
+            StsClient stsClient,
+            AthenaManager athenaManager,
+            LakeFormationManager lakeFormationManager) {
         this.outputPortValidationService = outputPortValidationService;
         this.athenaClientProvider = athenaClientProvider;
+        this.lakeFormationClientProvider = lakeFormationClientProvider;
+        this.glueClientProvider = glueClientProvider;
+        this.stsClient = stsClient;
         this.athenaManager = athenaManager;
+        this.lakeFormationManager = lakeFormationManager;
     }
 
     @Override
@@ -60,6 +80,11 @@ public class OutputPortProvisionService implements ProvisionService {
                                                 .flatMap(storageAreaRegion -> {
                                                     AthenaClient athenaClient =
                                                             athenaClientProvider.apply(Region.of(storageAreaRegion));
+                                                    LakeFormationClient lakeFormationClient =
+                                                            lakeFormationClientProvider.apply(
+                                                                    Region.of(storageAreaRegion));
+                                                    GlueClient glueClient =
+                                                            glueClientProvider.apply(Region.of(storageAreaRegion));
 
                                                     AthenaTable sourceTable = athenaSpecific.getSourceTable();
                                                     AthenaView targetView = athenaSpecific.getView();
@@ -87,6 +112,8 @@ public class OutputPortProvisionService implements ProvisionService {
                                                                                     .getSchema()))
                                                                     .flatMap(ignored4 -> createView(
                                                                             athenaClient,
+                                                                            lakeFormationClient,
+                                                                            glueClient,
                                                                             outputLocation,
                                                                             sourceTable,
                                                                             targetView,
@@ -111,12 +138,10 @@ public class OutputPortProvisionService implements ProvisionService {
                                                                                 "label", "Catalog",
                                                                                 "value", targetView.getCatalog()));
 
-                                                                ProvisionInfo provisionInfo = ProvisionInfo.builder()
+                                                                return ProvisionInfo.builder()
                                                                         .privateInfo(Optional.of(info))
                                                                         .publicInfo(Optional.of(info))
                                                                         .build();
-
-                                                                return provisionInfo;
                                                             });
                                                 })))));
     }
@@ -156,12 +181,10 @@ public class OutputPortProvisionService implements ProvisionService {
                                                                                         athenaView.getDatabase(),
                                                                                         athenaView.getCatalog())));
 
-                                                                ProvisionInfo provisionInfo = ProvisionInfo.builder()
+                                                                return ProvisionInfo.builder()
                                                                         .privateInfo(Optional.of(info))
                                                                         .publicInfo(Optional.of(info))
                                                                         .build();
-
-                                                                return provisionInfo;
                                                             });
                                                 })))));
     }
@@ -199,17 +222,37 @@ public class OutputPortProvisionService implements ProvisionService {
 
     private Either<FailedOperation, Void> createView(
             AthenaClient athenaClient,
+            LakeFormationClient lakeFormationClient,
+            GlueClient glueClient,
             String outputLocation,
             AthenaTable athenaTable,
             AthenaView athenaView,
             List<AthenaColumn> columns) {
 
-        return athenaManager.createView(athenaClient, outputLocation, athenaTable, athenaView, columns);
-    }
+        if (!enforceLakeFormation.equals("true"))
+            return athenaManager.createView(athenaClient, outputLocation, athenaTable, athenaView, columns);
 
-    private String extractFolderName(String componentId) {
-        String[] componentIdParts = componentId.split(":");
-        return componentIdParts[componentIdParts.length - 1];
+        try {
+            String accountId = stsClient.getCallerIdentity().account();
+
+            String awsServiceRoleForLakeFormationDataAccessArn =
+                    "arn:aws:iam::{accountID}:role/aws-service-role/lakeformation.amazonaws.com/AWSServiceRoleForLakeFormationDataAccess"
+                            .replace("{accountID}", accountId);
+
+            return athenaManager
+                    .getTableLocation(glueClient, athenaTable)
+                    .flatMap(tableLocation -> extractS3Arn(tableLocation).flatMap(locationArn -> lakeFormationManager
+                            .registerDataLakeLocation(
+                                    lakeFormationClient, locationArn, awsServiceRoleForLakeFormationDataAccessArn)
+                            .flatMap(ignored -> athenaManager.createMultiDialectView(
+                                    athenaClient, outputLocation, athenaTable, athenaView, columns))));
+
+        } catch (Exception e) {
+            String error = String.format(
+                    "An unexpected error occurred while getting AWS caller identity. Details: %s", e.getMessage());
+            logger.error(error, e);
+            return Either.left(new FailedOperation(error, List.of(new Problem(error, e))));
+        }
     }
 
     private String buildS3Url(String bucketName, String folderName) {
@@ -245,7 +288,21 @@ public class OutputPortProvisionService implements ProvisionService {
         Either<FailedOperation, String> bucketName = extractBucketName(storageAreaInfo);
         if (bucketName.isLeft()) return Either.left(bucketName.getLeft());
 
-        String folderName = extractFolderName(component.getId());
         return Either.right(buildS3Url(bucketName.get(), folderPath));
+    }
+
+    protected Either<FailedOperation, String> extractS3Arn(String s3Location) {
+        if (s3Location == null || !s3Location.startsWith("s3://")) {
+            String error = "An error occurred while extracting S3 arn. Invalid S3 location: " + s3Location;
+            logger.error(error);
+            return Either.left(new FailedOperation(error, List.of(new Problem(error))));
+        }
+
+        String pathWithoutPrefix = s3Location.substring(5);
+        String[] parts = pathWithoutPrefix.split("/", 2);
+        String bucket = parts[0];
+        String path = parts.length > 1 ? "/" + parts[1] : "";
+
+        return Either.right("arn:aws:s3:::" + bucket + path);
     }
 }

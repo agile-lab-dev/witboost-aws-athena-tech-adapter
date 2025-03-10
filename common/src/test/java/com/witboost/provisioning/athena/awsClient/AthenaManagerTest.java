@@ -11,24 +11,41 @@ import com.witboost.provisioning.athena.model.AthenaView;
 import com.witboost.provisioning.athena.model.TableFormat;
 import com.witboost.provisioning.model.common.FailedOperation;
 import io.vavr.control.Either;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.services.athena.AthenaClient;
 import software.amazon.awssdk.services.athena.model.*;
+import software.amazon.awssdk.services.glue.GlueClient;
+import software.amazon.awssdk.services.glue.model.GetTableRequest;
+import software.amazon.awssdk.services.glue.model.GetTableResponse;
+import software.amazon.awssdk.services.glue.model.StorageDescriptor;
+import software.amazon.awssdk.services.glue.model.Table;
+import software.amazon.awssdk.services.sts.StsClient;
 
+@SpringBootTest
 class AthenaManagerTest {
 
+    @Autowired
     private AthenaManager athenaManager;
+
     private AthenaClient athenaClient;
 
     private final String catalog = "awsCatalog";
     private final String database = "testDatabase";
     private final String tableName = "testTable";
     private final String outputLocation = "s3://fake-location";
+
+    @MockitoBean
+    StsClient stsClient;
 
     @BeforeEach
     void setUp() {
@@ -149,6 +166,15 @@ class AthenaManagerTest {
                 StartQueryExecutionResponse.builder().queryExecutionId("1234").build();
         when(athenaClient.startQueryExecution(any(StartQueryExecutionRequest.class)))
                 .thenReturn(response);
+        GetQueryExecutionResponse executionResponse = GetQueryExecutionResponse.builder()
+                .queryExecution(QueryExecution.builder()
+                        .status(QueryExecutionStatus.builder()
+                                .state(QueryExecutionState.SUCCEEDED)
+                                .build())
+                        .build())
+                .build();
+        when(athenaClient.getQueryExecution(any(GetQueryExecutionRequest.class)))
+                .thenReturn(executionResponse);
 
         Either<FailedOperation, Void> result =
                 athenaManager.createDatabase(athenaClient, outputLocation, catalog, database);
@@ -203,6 +229,15 @@ class AthenaManagerTest {
                 .build();
         when(athenaClient.startQueryExecution(any(StartQueryExecutionRequest.class)))
                 .thenReturn(response);
+        GetQueryExecutionResponse executionResponse = GetQueryExecutionResponse.builder()
+                .queryExecution(QueryExecution.builder()
+                        .status(QueryExecutionStatus.builder()
+                                .state(QueryExecutionState.SUCCEEDED)
+                                .build())
+                        .build())
+                .build();
+        when(athenaClient.getQueryExecution(any(GetQueryExecutionRequest.class)))
+                .thenReturn(executionResponse);
 
         Either<FailedOperation, Void> result = athenaManager.createTable(
                 athenaClient, outputLocation, catalog, database, tableName, TableFormat.ICEBERG, columns);
@@ -230,10 +265,19 @@ class AthenaManagerTest {
         List<AthenaColumn> columns = List.of(column1, column2);
 
         StartQueryExecutionResponse response = StartQueryExecutionResponse.builder()
-                .queryExecutionId("viewQueryId")
+                .queryExecutionId("tableQueryId")
                 .build();
         when(athenaClient.startQueryExecution(any(StartQueryExecutionRequest.class)))
                 .thenReturn(response);
+        GetQueryExecutionResponse executionResponse = GetQueryExecutionResponse.builder()
+                .queryExecution(QueryExecution.builder()
+                        .status(QueryExecutionStatus.builder()
+                                .state(QueryExecutionState.SUCCEEDED)
+                                .build())
+                        .build())
+                .build();
+        when(athenaClient.getQueryExecution(any(GetQueryExecutionRequest.class)))
+                .thenReturn(executionResponse);
 
         Either<FailedOperation, Void> result =
                 athenaManager.createView(athenaClient, outputLocation, athenaTable, athenaView, columns);
@@ -242,7 +286,6 @@ class AthenaManagerTest {
 
     @Test
     void dropView_success_returnsRight() {
-        // Create a dummy AthenaView.
         AthenaView athenaView = new AthenaView();
         athenaView.setCatalog(catalog);
         athenaView.setDatabase(database);
@@ -253,6 +296,15 @@ class AthenaManagerTest {
                 .build();
         when(athenaClient.startQueryExecution(any(StartQueryExecutionRequest.class)))
                 .thenReturn(response);
+        GetQueryExecutionResponse executionResponse = GetQueryExecutionResponse.builder()
+                .queryExecution(QueryExecution.builder()
+                        .status(QueryExecutionStatus.builder()
+                                .state(QueryExecutionState.SUCCEEDED)
+                                .build())
+                        .build())
+                .build();
+        when(athenaClient.getQueryExecution(any(GetQueryExecutionRequest.class)))
+                .thenReturn(executionResponse);
 
         Either<FailedOperation, Void> result = athenaManager.dropView(athenaClient, outputLocation, athenaView);
         assertTrue(result.isRight(), "Expected dropView to succeed");
@@ -260,11 +312,9 @@ class AthenaManagerTest {
 
     @Test
     void createColumnsListForSelectStatement_empty_returnsAsterisk() throws Exception {
-        // Use reflection to call the private method.
         Method method = AthenaManager.class.getDeclaredMethod("createColumnsListForSelectStatement", List.class);
         method.setAccessible(true);
 
-        // Call with an empty list.
         @SuppressWarnings("unchecked")
         String result = (String) method.invoke(athenaManager, Collections.emptyList());
         assertEquals("*", result, "Expected '*' when column list is empty");
@@ -272,11 +322,9 @@ class AthenaManagerTest {
 
     @Test
     void createColumnsListForSelectStatement_nonEmpty_returnsCommaSeparatedList() throws Exception {
-        // Use reflection to call the private method.
         Method method = AthenaManager.class.getDeclaredMethod("createColumnsListForSelectStatement", List.class);
         method.setAccessible(true);
 
-        // Prepare a non-empty list of columns.
         com.witboost.provisioning.model.Column column1 = new com.witboost.provisioning.model.Column();
         column1.setName("id");
         column1.setDataType("STRING");
@@ -287,5 +335,196 @@ class AthenaManagerTest {
         @SuppressWarnings("unchecked")
         String result = (String) method.invoke(athenaManager, columns);
         assertEquals("id, name", result, "Expected comma-separated column names");
+    }
+
+    @Test
+    void waitForQueryToComplete_shouldSucceedWhenQuerySucceeds() {
+        when(athenaClient.getQueryExecution(any(GetQueryExecutionRequest.class)))
+                .thenReturn(GetQueryExecutionResponse.builder()
+                        .queryExecution(QueryExecution.builder()
+                                .status(QueryExecutionStatus.builder()
+                                        .state(QueryExecutionState.SUCCEEDED)
+                                        .build())
+                                .build())
+                        .build());
+
+        Either<FailedOperation, Void> result = athenaManager.waitForQueryToComplete(athenaClient, "query-id");
+
+        assertTrue(result.isRight());
+    }
+
+    @Test
+    void waitForQueryToComplete_shouldFailOnTimeout() {
+        when(athenaClient.getQueryExecution(any(GetQueryExecutionRequest.class)))
+                .thenAnswer(invocation -> GetQueryExecutionResponse.builder()
+                        .queryExecution(QueryExecution.builder()
+                                .status(QueryExecutionStatus.builder()
+                                        .state(QueryExecutionState.RUNNING)
+                                        .build())
+                                .build())
+                        .build());
+
+        Either<FailedOperation, Void> result = athenaManager.waitForQueryToComplete(athenaClient, "query-id");
+
+        assertTrue(result.isLeft());
+        assertTrue(result.getLeft().message().contains("timeout"));
+    }
+
+    @Test
+    void waitForQueryToComplete_shouldFailWhenQueryFails() {
+        when(athenaClient.getQueryExecution(any(GetQueryExecutionRequest.class)))
+                .thenReturn(GetQueryExecutionResponse.builder()
+                        .queryExecution(QueryExecution.builder()
+                                .status(QueryExecutionStatus.builder()
+                                        .state(QueryExecutionState.FAILED)
+                                        .stateChangeReason("Syntax error")
+                                        .build())
+                                .build())
+                        .build());
+
+        Either<FailedOperation, Void> result = athenaManager.waitForQueryToComplete(athenaClient, "query-id");
+
+        assertTrue(result.isLeft());
+        assertTrue(result.getLeft().message().contains("Query query-id failed"));
+    }
+
+    @Test
+    void waitForQueryToComplete_shouldFailWhenQueryIsCancelled() {
+        when(athenaClient.getQueryExecution(any(GetQueryExecutionRequest.class)))
+                .thenReturn(GetQueryExecutionResponse.builder()
+                        .queryExecution(QueryExecution.builder()
+                                .status(QueryExecutionStatus.builder()
+                                        .state(QueryExecutionState.CANCELLED)
+                                        .stateChangeReason("User cancelled")
+                                        .build())
+                                .build())
+                        .build());
+
+        Either<FailedOperation, Void> result = athenaManager.waitForQueryToComplete(athenaClient, "query-id");
+
+        assertTrue(result.isLeft());
+        assertTrue(result.getLeft().message().contains("Query query-id cancelled"));
+    }
+
+    @Test
+    void submitQuery_shouldHandleAthenaException() {
+        when(athenaClient.startQueryExecution(any(StartQueryExecutionRequest.class)))
+                .thenThrow(AthenaException.builder()
+                        .awsErrorDetails(AwsErrorDetails.builder()
+                                .errorMessage("Error message")
+                                .build())
+                        .message("Access Denied")
+                        .build());
+
+        Either<FailedOperation, String> result =
+                athenaManager.submitQuery(athenaClient, "s3://output-location", "catalog", "SELECT * FROM table");
+
+        assertTrue(result.isLeft());
+        assertTrue(result.getLeft().message().contains("Athena-specific error during query submission"));
+    }
+
+    @Test
+    void testWaitForQueryToCompleteHandlesException() {
+
+        String queryExecutionId = "test-query-id";
+
+        when(athenaClient.getQueryExecution(any(GetQueryExecutionRequest.class)))
+                .thenThrow(new RuntimeException("runtime exception"));
+        Either<FailedOperation, Void> result = athenaManager.waitForQueryToComplete(athenaClient, queryExecutionId);
+
+        assertTrue(result.isLeft());
+        assertTrue(result.getLeft().message().contains("An unexpected error waiting for the completion"));
+    }
+
+    @Test
+    void testCreateMultiDialectView() {
+        AthenaTable athenaTable = new AthenaTable();
+        athenaTable.setCatalog(catalog);
+        athenaTable.setDatabase(database);
+        athenaTable.setName(tableName);
+
+        AthenaView athenaView = new AthenaView();
+        athenaView.setCatalog(catalog);
+        athenaView.setDatabase("viewDatabase");
+        athenaView.setName("testView");
+
+        AthenaColumn column1 = new AthenaColumn();
+        column1.setName("id");
+        column1.setDataType("STRING");
+        AthenaColumn column2 = new AthenaColumn();
+        column2.setName("name");
+        column2.setDataType("STRING");
+        List<AthenaColumn> columns = List.of(column1, column2);
+
+        StartQueryExecutionResponse response = StartQueryExecutionResponse.builder()
+                .queryExecutionId("tableQueryId")
+                .build();
+        when(athenaClient.startQueryExecution(any(StartQueryExecutionRequest.class)))
+                .thenReturn(response);
+        GetQueryExecutionResponse executionResponse = GetQueryExecutionResponse.builder()
+                .queryExecution(QueryExecution.builder()
+                        .status(QueryExecutionStatus.builder()
+                                .state(QueryExecutionState.SUCCEEDED)
+                                .build())
+                        .build())
+                .build();
+        when(athenaClient.getQueryExecution(any(GetQueryExecutionRequest.class)))
+                .thenReturn(executionResponse);
+
+        Either<FailedOperation, Void> result = athenaManager.createMultiDialectView(
+                athenaClient, "s3://output-location", athenaTable, athenaView, columns);
+
+        System.out.println(result);
+        assertTrue(result.isRight());
+    }
+
+    @Test
+    void testGetTableLocationSuccess() {
+        GlueClient glueClient = mock(GlueClient.class);
+        AthenaManager athenaManager = new AthenaManager();
+
+        GetTableResponse response = GetTableResponse.builder()
+                .table(Table.builder()
+                        .storageDescriptor(StorageDescriptor.builder()
+                                .location("s3://bucket/path/")
+                                .build())
+                        .build())
+                .build();
+
+        when(glueClient.getTable(any(GetTableRequest.class))).thenReturn(response);
+
+        AthenaTable athenaTable = new AthenaTable();
+        athenaTable.setCatalog(catalog);
+        athenaTable.setDatabase(database);
+        athenaTable.setName(tableName);
+
+        Either<FailedOperation, String> result = athenaManager.getTableLocation(glueClient, athenaTable);
+
+        assertTrue(result.isRight());
+        assertEquals("s3://bucket/path/", result.get());
+    }
+
+    @Test
+    void testGetTableLocationFailure() {
+        GlueClient glueClient = mock(GlueClient.class);
+
+        when(glueClient.getTable(any(GetTableRequest.class))).thenThrow(RuntimeException.class);
+
+        Either<FailedOperation, String> result = athenaManager.getTableLocation(glueClient, new AthenaTable());
+
+        assertTrue(result.isLeft());
+        assertTrue(result.getLeft().message().contains("An unexpected error occurred while getting table location"));
+    }
+
+    @Test
+    void testValidateTimeoutWithReflection() throws Exception {
+        AthenaManager athenaManager = new AthenaManager();
+
+        Field field = AthenaManager.class.getDeclaredField("queryTimeoutSeconds");
+        field.setAccessible(true);
+        field.set(athenaManager, 0);
+
+        Exception exception = assertThrows(IllegalArgumentException.class, athenaManager::validateTimeout);
+        assertTrue(exception.getMessage().contains("Query timeout must be greater than zero"));
     }
 }

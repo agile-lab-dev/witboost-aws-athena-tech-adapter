@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.witboost.provisioning.athena.awsClient.AthenaManager;
+import com.witboost.provisioning.athena.awsClient.LakeFormationManager;
 import com.witboost.provisioning.athena.config.ClassProviderBean;
 import com.witboost.provisioning.athena.config.ConfigurationBean;
 import com.witboost.provisioning.athena.model.AthenaSpecific;
@@ -44,6 +45,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import software.amazon.awssdk.regions.Region;
@@ -51,6 +53,8 @@ import software.amazon.awssdk.services.athena.AthenaClient;
 import software.amazon.awssdk.services.athena.model.Column;
 import software.amazon.awssdk.services.athena.model.TableMetadata;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -78,7 +82,13 @@ class OutputPortProvisionServiceTest {
     private S3Client s3Client;
 
     @MockitoBean
+    StsClient stsClient;
+
+    @MockitoBean
     private AthenaManager athenaManager;
+
+    @MockitoBean
+    LakeFormationManager lakeFormationManager;
 
     @MockitoBean
     private OutputPortValidationService outputPortValidationService;
@@ -98,9 +108,15 @@ class OutputPortProvisionServiceTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+
+        ReflectionTestUtils.setField(outputPortProvisionService, "enforceLakeFormation", "false");
+
         when(athenaClientProvider.apply(any(Region.class))).thenReturn(athenaClient);
         when(s3ClientProvider.apply(any(Region.class))).thenReturn(s3Client);
 
+        when(stsClient.getCallerIdentity())
+                .thenReturn(
+                        GetCallerIdentityResponse.builder().account("account").build());
         initializeOutputPort();
         when(request.getComponent()).thenReturn(Optional.of(outputPort));
 
@@ -436,6 +452,110 @@ class OutputPortProvisionServiceTest {
     private ProvisioningRequest createProvisioningRequest(String resourcePath) throws IOException {
         String ymlDescriptor = ResourceUtils.getContentFromResource(resourcePath);
         return new ProvisioningRequest(DescriptorKind.COMPONENT_DESCRIPTOR, ymlDescriptor, false);
+    }
+
+    @Test
+    void testExtractS3Arn_ValidLocation() {
+        String s3Location = "s3://bucket-name/path/to/file";
+        Either<FailedOperation, String> result = outputPortProvisionService.extractS3Arn(s3Location);
+
+        assertTrue(result.isRight());
+        assertEquals("arn:aws:s3:::bucket-name/path/to/file", result.get());
+    }
+
+    @Test
+    void testExtractS3Arn_InvalidLocation_Null() {
+        String s3Location = null;
+        Either<FailedOperation, String> result = outputPortProvisionService.extractS3Arn(s3Location);
+
+        assertTrue(result.isLeft());
+        assertTrue(result.getLeft().message().contains("Invalid S3 location"));
+    }
+
+    @Test
+    void testExtractS3Arn_InvalidLocation_InvalidPrefix() {
+        String s3Location = "http://bucket-name/path/to/file";
+        Either<FailedOperation, String> result = outputPortProvisionService.extractS3Arn(s3Location);
+
+        assertTrue(result.isLeft());
+        assertTrue(result.getLeft().message().contains("Invalid S3 location"));
+    }
+
+    @Test
+    void testExtractS3Arn_WithBucketOnly() {
+        String s3Location = "s3://bucket-name";
+        Either<FailedOperation, String> result = outputPortProvisionService.extractS3Arn(s3Location);
+
+        assertTrue(result.isRight());
+        assertEquals("arn:aws:s3:::bucket-name", result.get());
+    }
+
+    @Test
+    public void testCreateView_WhenEnforceLakeFormationIsTrue() throws Exception {
+
+        ProvisioningRequest provisioningRequest = createProvisioningRequest("/descriptor_outputport.yml");
+        ReflectionTestUtils.setField(outputPortProvisionService, "enforceLakeFormation", "true");
+
+        when(outputPortValidationService.validate(any(OperationRequest.class), eq(OperationType.PROVISION)))
+                .thenReturn(Either.right(null));
+        when(athenaManager.checkDatabaseExists(any(AthenaClient.class), anyString(), anyString()))
+                .thenReturn(Either.right(false));
+        when(athenaManager.createDatabase(any(AthenaClient.class), anyString(), anyString(), anyString()))
+                .thenReturn(Either.right(null));
+        when(athenaManager.getTableMetadata(any(AthenaClient.class), anyString(), anyString(), anyString()))
+                .thenReturn(Either.right(Optional.empty()));
+        when(athenaManager.createTable(
+                        any(AthenaClient.class),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        anyString(),
+                        any(TableFormat.class),
+                        anyList()))
+                .thenReturn(Either.right(null));
+        when(athenaManager.getTableLocation(any(), any())).thenReturn(Either.right("s3://bucket-location"));
+        when(lakeFormationManager.registerDataLakeLocation(any(), any(), any())).thenReturn(Either.right(null));
+        when(athenaManager.createMultiDialectView(any(), any(), any(), any(), any()))
+                .thenReturn(Either.right(null));
+
+        MvcResult result = mockMvc.perform(post(mockProvisionEndpoint)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(provisioningRequest)))
+                .andReturn();
+
+        assertEquals(200, result.getResponse().getStatus());
+        assert (result.getResponse().getContentAsString().contains("\"status\":\"COMPLETED\""));
+    }
+
+    @Test
+    void testProvisionExceptionGettingStsAccount_shouldReturnFailedOperation() throws Exception {
+
+        ReflectionTestUtils.setField(outputPortProvisionService, "enforceLakeFormation", "true");
+        ProvisioningRequest provisioningRequest = createProvisioningRequest("/descriptor_outputport.yml");
+
+        when(outputPortValidationService.validate(any(OperationRequest.class), eq(OperationType.PROVISION)))
+                .thenReturn(Either.right(null));
+        when(athenaManager.checkDatabaseExists(any(AthenaClient.class), anyString(), anyString()))
+                .thenReturn(Either.right(false));
+        when(athenaManager.createDatabase(any(AthenaClient.class), anyString(), anyString(), anyString()))
+                .thenReturn(Either.right(null));
+        TableMetadata tableMetadata = TableMetadata.builder()
+                .name("users")
+                .columns(List.of(
+                        Column.builder().name("id").type("STRING").build(),
+                        Column.builder().name("name").type("STRING").build()))
+                .build();
+        when(athenaManager.getTableMetadata(any(AthenaClient.class), anyString(), anyString(), anyString()))
+                .thenReturn(Either.right(Optional.of(tableMetadata)));
+
+        when(stsClient.getCallerIdentity()).thenThrow(new RuntimeException("getCallerIdentity exception"));
+        MvcResult result = mockMvc.perform(post(mockProvisionEndpoint)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(provisioningRequest)))
+                .andReturn();
+
+        assertEquals(400, result.getResponse().getStatus());
+        assertTrue(result.getResponse().getContentAsString().contains("getCallerIdentity exception"));
     }
 
     private com.witboost.provisioning.model.Column createColumn(String name, String dataType) {

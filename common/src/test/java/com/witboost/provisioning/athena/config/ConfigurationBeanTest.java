@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import software.amazon.awssdk.services.sts.StsClient;
 
 class ConfigurationBeanTest {
 
@@ -17,6 +18,9 @@ class ConfigurationBeanTest {
     @Mock
     private AthenaManager athenaManager;
 
+    @Mock
+    private StsClient stsClient;
+
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
@@ -25,7 +29,7 @@ class ConfigurationBeanTest {
     @Test
     void provisionBeanCreation() {
         var outputPort = configurationBean.outputPortProvisionService(
-                configurationBean.outputPortValidationService(), athenaManager);
+                configurationBean.outputPortValidationService(), athenaManager, stsClient);
         var bean = new ConfigurationBean().provisionConfiguration(outputPort);
 
         assertEquals(outputPort, bean.getOutputPortProvisionService());

@@ -5,6 +5,9 @@
 # -- Docker Registry Secret name used to access a private repo
 dockerRegistrySecretName: regcred
 
+# -- Enforce lakeformation integration
+enforceLakeFormation: true
+
 image:
   # -- Image repository
   registry: registry.gitlab.com/agilefactory/witboost.mesh/provisioning/aws/witboost.mesh.provisioning.athena

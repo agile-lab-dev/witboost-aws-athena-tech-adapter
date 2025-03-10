@@ -10,6 +10,7 @@ import com.witboost.provisioning.model.Column;
 import com.witboost.provisioning.model.common.FailedOperation;
 import com.witboost.provisioning.model.common.Problem;
 import io.vavr.control.Either;
+import jakarta.annotation.PostConstruct;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -19,15 +20,31 @@ import java.util.Optional;
 import lombok.NoArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.athena.AthenaClient;
 import software.amazon.awssdk.services.athena.model.*;
+import software.amazon.awssdk.services.glue.GlueClient;
+import software.amazon.awssdk.services.glue.model.GetTableRequest;
+import software.amazon.awssdk.services.glue.model.GetTableResponse;
+import software.amazon.awssdk.services.glue.model.Table;
 
 @NoArgsConstructor
 @Service
 public class AthenaManager {
 
     private final Logger logger = LoggerFactory.getLogger(AthenaManager.class);
+
+    @Value("${queryTimeoutSeconds:60}")
+    private int queryTimeoutSeconds;
+
+    @PostConstruct
+    public void validateTimeout() {
+        if (queryTimeoutSeconds <= 0) {
+            throw new IllegalArgumentException("Query timeout must be greater than zero. "
+                    + "Please check the 'QUERY_TIMEOUT_SECONDS' environment variable or application configuration.");
+        }
+    }
 
     /**
      * Checks if a specific database exists within a given Athena catalog.
@@ -106,7 +123,7 @@ public class AthenaManager {
             }
 
             logger.info("Table '{}' found in database '{}' (catalog: '{}')", tableName, database, catalog);
-            return Either.right(Optional.of(tableMetadata.get()));
+            return Either.right(tableMetadata);
 
         } catch (Exception e) {
             String error = String.format(
@@ -126,7 +143,7 @@ public class AthenaManager {
      * @param queryString    the SQL query string to execute
      * @return {@code Either<FailedOperation, String>} containing execution ID if successful, or error details
      */
-    private Either<FailedOperation, String> submitQuery(
+    protected Either<FailedOperation, String> submitQuery(
             @NotNull AthenaClient athenaClient,
             @NotBlank String outputLocation,
             @NotBlank String catalog,
@@ -146,10 +163,10 @@ public class AthenaManager {
                     .resultConfiguration(resultConfiguration)
                     .build();
 
-            StartQueryExecutionResponse response = athenaClient.startQueryExecution(request);
+            StartQueryExecutionResponse queryExecution = athenaClient.startQueryExecution(request);
 
-            logger.debug("Query submitted successfully, Execution ID: {}", response.queryExecutionId());
-            return Either.right(response.queryExecutionId());
+            logger.debug("Query submitted successfully, Execution ID: {}", queryExecution.queryExecutionId());
+            return Either.right(queryExecution.queryExecutionId());
 
         } catch (AthenaException e) {
             String error = String.format(
@@ -159,6 +176,68 @@ public class AthenaManager {
             return Either.left(new FailedOperation(error, List.of(new Problem(error, e))));
         } catch (Exception e) {
             String error = String.format("An unexpected error occurred during query submission: %s", e.getMessage());
+            logger.error(error, e);
+            return Either.left(new FailedOperation(error, List.of(new Problem(error, e))));
+        }
+    }
+
+    protected Either<FailedOperation, Void> waitForQueryToComplete(AthenaClient athenaClient, String queryExecutionId) {
+        try {
+            long startTime = System.currentTimeMillis();
+            long timeout = queryTimeoutSeconds * 1000L;
+
+            while (true) {
+                GetQueryExecutionRequest getQueryExecutionRequest = GetQueryExecutionRequest.builder()
+                        .queryExecutionId(queryExecutionId)
+                        .build();
+
+                GetQueryExecutionResponse getQueryExecutionResponse =
+                        athenaClient.getQueryExecution(getQueryExecutionRequest);
+                QueryExecutionState state =
+                        getQueryExecutionResponse.queryExecution().status().state();
+
+                switch (state) {
+                    case SUCCEEDED:
+                        return Either.right(null);
+                    case FAILED:
+                        String errorFailedQuery = String.format(
+                                "Query %s failed. Result: %s",
+                                queryExecutionId,
+                                getQueryExecutionResponse
+                                        .queryExecution()
+                                        .status()
+                                        .stateChangeReason());
+                        logger.error(errorFailedQuery);
+                        return Either.left(
+                                new FailedOperation(errorFailedQuery, List.of(new Problem(errorFailedQuery))));
+                    case CANCELLED:
+                        String errorCancelledQuery = String.format(
+                                "Query %s cancelled. %s",
+                                queryExecutionId,
+                                getQueryExecutionResponse
+                                        .queryExecution()
+                                        .status()
+                                        .stateChangeReason());
+                        logger.error(errorCancelledQuery);
+                        return Either.left(
+                                new FailedOperation(errorCancelledQuery, List.of(new Problem(errorCancelledQuery))));
+                    default:
+                        if (System.currentTimeMillis() - startTime > timeout) {
+                            String errorTimeOut = String.format(
+                                    "Query %s timeout: execution time exceeded %d seconds",
+                                    queryExecutionId, queryTimeoutSeconds);
+                            logger.error(errorTimeOut);
+                            return Either.left(new FailedOperation(errorTimeOut, List.of(new Problem(errorTimeOut))));
+                        }
+
+                        Thread.sleep(5000);
+                }
+            }
+
+        } catch (Exception e) {
+            String error = String.format(
+                    "An unexpected error waiting for the completion of the %s query execution. Details: %s",
+                    queryExecutionId, e.getMessage());
             logger.error(error, e);
             return Either.left(new FailedOperation(error, List.of(new Problem(error, e))));
         }
@@ -178,7 +257,8 @@ public class AthenaManager {
             @NotBlank String outputLocation,
             @NotBlank String catalog,
             @NotBlank String query) {
-        return submitQuery(athenaClient, outputLocation, catalog, query).map(ignore -> null);
+        return submitQuery(athenaClient, outputLocation, catalog, query)
+                .flatMap(queryID -> waitForQueryToComplete(athenaClient, queryID));
     }
 
     /**
@@ -189,6 +269,8 @@ public class AthenaManager {
      * @param catalog        the Athena catalog name
      * @param database       the name of the database to create
      * @return {@code Either<FailedOperation, Void>} indicating success or failure
+     *         - {@code Right(Void)} if the database was successfully created or already exists
+     *         - {@code Left(FailedOperation)} if an error occurs during the operation
      */
     public Either<FailedOperation, Void> createDatabase(
             @NotNull AthenaClient athenaClient,
@@ -197,11 +279,21 @@ public class AthenaManager {
             @NotBlank String database) {
         logger.info("Starting creation of database '{}' in catalog '{}'", database, catalog);
         String query = String.format("CREATE DATABASE IF NOT EXISTS %s;", database);
-        return executeDDL(athenaClient, outputLocation, catalog, query);
+
+        Either<FailedOperation, Void> result = executeDDL(athenaClient, outputLocation, catalog, query);
+
+        if (result.isRight()) {
+            logger.info("Database '{}' created successfully in catalog '{}'", database, catalog);
+        } else {
+            logger.error(
+                    "Failed to create database '{}' in catalog '{}'. Error: {}", database, catalog, result.getLeft());
+        }
+
+        return result;
     }
 
     /**
-     * Creates a new table in Athena with the specified schema.
+     * Creates a new table in Athena with the specified schema if it does not already exist.
      *
      * @param athenaClient   the Athena client used to interact with the service
      * @param outputLocation the S3 location where query results are stored
@@ -210,6 +302,8 @@ public class AthenaManager {
      * @param name           the name of the table to create
      * @param schema         the schema definition of the table
      * @return {@code Either<FailedOperation, Void>} indicating success or failure
+     *         - {@code Right(Void)} if the table was successfully created or already exists
+     *         - {@code Left(FailedOperation)} if an error occurs during the operation
      */
     public Either<FailedOperation, Void> createTable(
             @NotNull AthenaClient athenaClient,
@@ -222,10 +316,26 @@ public class AthenaManager {
 
         AthenaTableSQLGenerator athenaTableSQLGenerator =
                 new AthenaTableSQLGenerator(TypeCheckerFactory.getTypeChecker(tableFormat));
+
         logger.info("Starting creation of table '{}' in database '{}'", name, database);
-        return athenaTableSQLGenerator
-                .generateCreateTableSQL(database, name, tableFormat.name(), outputLocation, schema)
-                .flatMap(query -> executeDDL(athenaClient, outputLocation, catalog, query));
+
+        Either<FailedOperation, String> sqlQuery = athenaTableSQLGenerator.generateCreateTableSQL(
+                database, name, tableFormat.name(), outputLocation, schema);
+
+        if (sqlQuery.isLeft()) {
+            logger.error("Failed to generate CREATE TABLE SQL for table '{}'. Error: {}", name, sqlQuery.getLeft());
+            return Either.left(sqlQuery.getLeft());
+        }
+
+        Either<FailedOperation, Void> result = executeDDL(athenaClient, outputLocation, catalog, sqlQuery.get());
+
+        if (result.isRight()) {
+            logger.info("Table '{}' created successfully in database '{}'", name, database);
+        } else {
+            logger.error("Failed to create table '{}' in database '{}'. Error: {}", name, database, result.getLeft());
+        }
+
+        return result;
     }
 
     /**
@@ -237,6 +347,8 @@ public class AthenaManager {
      * @param athenaView     the view to create or replace
      * @param columns        the column list for the view
      * @return {@code Either<FailedOperation, Void>} indicating success or failure
+     *         - {@code Right(Void)} if the view was successfully created or replaced
+     *         - {@code Left(FailedOperation)} if an error occurs during the operation
      */
     public Either<FailedOperation, Void> createView(
             @NotNull AthenaClient athenaClient,
@@ -248,7 +360,7 @@ public class AthenaManager {
         String columnList = createColumnsListForSelectStatement(columns);
 
         String query = String.format(
-                "CREATE OR REPLACE  VIEW %s.%s AS SELECT %s FROM %s.%s;",
+                "CREATE OR REPLACE VIEW %s.%s AS SELECT %s FROM %s.%s;",
                 athenaView.getDatabase(),
                 athenaView.getName(),
                 columnList,
@@ -256,8 +368,22 @@ public class AthenaManager {
                 athenaTable.getName());
 
         logger.info("Starting creation of view '{}' in database '{}'", athenaView.getName(), athenaView.getDatabase());
-        logger.debug("View '{}' columns: {}", athenaView.getName(), columnList);
-        return executeDDL(athenaClient, outputLocation, athenaView.getCatalog(), query);
+        logger.debug("Generated SQL for view '{}': {}", athenaView.getName(), query);
+
+        Either<FailedOperation, Void> result = executeDDL(athenaClient, outputLocation, athenaView.getCatalog(), query);
+
+        if (result.isRight()) {
+            logger.info(
+                    "View '{}' created successfully in database '{}'", athenaView.getName(), athenaView.getDatabase());
+        } else {
+            logger.error(
+                    "Failed to create view '{}' in database '{}'. Error: {}",
+                    athenaView.getName(),
+                    athenaView.getDatabase(),
+                    result.getLeft());
+        }
+
+        return result;
     }
 
     /**
@@ -267,6 +393,8 @@ public class AthenaManager {
      * @param outputLocation the S3 location where query results are stored
      * @param athenaView     the view to be dropped
      * @return {@code Either<FailedOperation, Void>} indicating success or failure
+     *         - {@code Right(Void)} if the view was successfully dropped or did not exist
+     *         - {@code Left(FailedOperation)} if an error occurs during the operation
      */
     public Either<FailedOperation, Void> dropView(
             @NotNull AthenaClient athenaClient,
@@ -275,7 +403,24 @@ public class AthenaManager {
 
         String query = String.format("DROP VIEW IF EXISTS %s.%s;", athenaView.getDatabase(), athenaView.getName());
         logger.info("Dropping view '{}' from database '{}'", athenaView.getName(), athenaView.getDatabase());
-        return executeDDL(athenaClient, outputLocation, athenaView.getCatalog(), query);
+        logger.debug("Generated SQL for dropping view '{}': {}", athenaView.getName(), query);
+
+        Either<FailedOperation, Void> result = executeDDL(athenaClient, outputLocation, athenaView.getCatalog(), query);
+
+        if (result.isRight()) {
+            logger.info(
+                    "View '{}' successfully deleted from database '{}'",
+                    athenaView.getName(),
+                    athenaView.getDatabase());
+        } else {
+            logger.error(
+                    "Failed to delete view '{}' from database '{}'. Error: {}",
+                    athenaView.getName(),
+                    athenaView.getDatabase(),
+                    result.getLeft());
+        }
+
+        return result;
     }
 
     private String createColumnsListForSelectStatement(List<AthenaColumn> columnList) {
@@ -290,5 +435,83 @@ public class AthenaManager {
         }
 
         return String.join(", ", columnsList);
+    }
+
+    /**
+     * Creates or replaces a PROTECTED MULTI DIALECT view in Athena.
+     *
+     * @param athenaClient   the Athena client used to interact with the service
+     * @param outputLocation the S3 location where query results are stored
+     * @param athenaTable    the underlying table used in the view
+     * @param athenaView     the view to create or replace
+     * @param columns        the column list for the view
+     * @return {@code Either<FailedOperation, Void>} indicating success or failure
+     *         - {@code Right(Void)} if the multi-dialect view was successfully created or replaced
+     *         - {@code Left(FailedOperation)} if an error occurs during the operation
+     */
+    public Either<FailedOperation, Void> createMultiDialectView(
+            @NotNull AthenaClient athenaClient,
+            @NotBlank String outputLocation,
+            @Valid @NotNull AthenaTable athenaTable,
+            @Valid @NotNull AthenaView athenaView,
+            @Valid @NotNull List<AthenaColumn> columns) {
+
+        String columnList = createColumnsListForSelectStatement(columns);
+
+        String query = String.format(
+                "CREATE OR REPLACE PROTECTED MULTI DIALECT VIEW %s.%s SECURITY DEFINER " + "AS SELECT %s FROM %s.%s;",
+                athenaView.getDatabase(),
+                athenaView.getName(),
+                columnList,
+                athenaTable.getDatabase(),
+                athenaTable.getName());
+
+        logger.info(
+                "Starting creation of PROTECTED MULTI DIALECT view '{}' in database '{}'",
+                athenaView.getName(),
+                athenaView.getDatabase());
+        logger.debug("Generated SQL for multi-dialect view '{}': {}", athenaView.getName(), query);
+
+        Either<FailedOperation, Void> result = executeDDL(athenaClient, outputLocation, athenaView.getCatalog(), query);
+
+        if (result.isRight()) {
+            logger.info(
+                    "PROTECTED MULTI DIALECT view '{}' created successfully in database '{}'",
+                    athenaView.getName(),
+                    athenaView.getDatabase());
+        } else {
+            logger.error(
+                    "Failed to create PROTECTED MULTI DIALECT view '{}' in database '{}'. Error: {}",
+                    athenaView.getName(),
+                    athenaView.getDatabase(),
+                    result.getLeft());
+        }
+
+        return result;
+    }
+
+    public Either<FailedOperation, String> getTableLocation(
+            @NotNull GlueClient glueClient, @Valid @NotNull AthenaTable athenaTable) {
+        try {
+
+            GetTableRequest request = GetTableRequest.builder()
+                    .databaseName(athenaTable.getDatabase())
+                    .name(athenaTable.getName())
+                    .build();
+
+            GetTableResponse response = glueClient.getTable(request);
+            Table table = response.table();
+
+            String location = table.storageDescriptor().location();
+
+            return Either.right(location);
+
+        } catch (Exception e) {
+            String error = String.format(
+                    "An unexpected error occurred while getting table location of %s: %s.%s",
+                    athenaTable.getDatabase(), athenaTable.getName(), e.getMessage());
+            logger.error(error, e);
+            return Either.left(new FailedOperation(error, List.of(new Problem(error, e))));
+        }
     }
 }

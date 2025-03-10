@@ -46,3 +46,4 @@ helm/charts
 
 ### DrawIO backup ###
 *.drawio.bkp
+/doc/.$HLD.drawio.dtmp

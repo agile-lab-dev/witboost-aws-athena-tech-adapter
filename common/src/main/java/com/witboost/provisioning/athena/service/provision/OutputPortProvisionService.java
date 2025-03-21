@@ -18,10 +18,12 @@ import com.witboost.provisioning.model.request.ProvisionOperationRequest;
 import com.witboost.provisioning.model.status.ProvisionInfo;
 import io.vavr.control.Either;
 import io.vavr.control.Option;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -119,30 +121,48 @@ public class OutputPortProvisionService implements ProvisionService {
                                                                             targetView,
                                                                             outputPort
                                                                                     .getDataContract()
-                                                                                    .getSchema())))
-                                                            .map(ignored5 -> {
-                                                                var info = Map.of(
-                                                                        "view",
-                                                                        Map.of(
-                                                                                "type", "string",
-                                                                                "label", "View name",
-                                                                                "value", targetView.getName()),
-                                                                        "database",
-                                                                        Map.of(
-                                                                                "type", "string",
-                                                                                "label", "Database",
-                                                                                "value", targetView.getDatabase()),
-                                                                        "catalog",
-                                                                        Map.of(
-                                                                                "type", "string",
-                                                                                "label", "Catalog",
-                                                                                "value", targetView.getCatalog()));
+                                                                                    .getSchema()))
+                                                                    .map(ignored5 -> {
+                                                                        var publicInfo = Map.of(
+                                                                                "view",
+                                                                                Map.of(
+                                                                                        "type", "string",
+                                                                                        "label", "View name",
+                                                                                        "value", targetView.getName()),
+                                                                                "database",
+                                                                                Map.of(
+                                                                                        "type", "string",
+                                                                                        "label", "Database",
+                                                                                        "value",
+                                                                                                targetView
+                                                                                                        .getDatabase()),
+                                                                                "catalog",
+                                                                                Map.of(
+                                                                                        "type", "string",
+                                                                                        "label", "Catalog",
+                                                                                        "value",
+                                                                                                targetView
+                                                                                                        .getCatalog()),
+                                                                                "region",
+                                                                                Map.of(
+                                                                                        "type", "string",
+                                                                                        "label", "AWS region",
+                                                                                        "value", storageAreaRegion));
 
-                                                                return ProvisionInfo.builder()
-                                                                        .privateInfo(Optional.of(info))
-                                                                        .publicInfo(Optional.of(info))
-                                                                        .build();
-                                                            });
+                                                                        Map<String, @NotNull Map<String, String>>
+                                                                                privateInfo = new HashMap<>(publicInfo);
+                                                                        privateInfo.put(
+                                                                                "s3Location",
+                                                                                Map.of(
+                                                                                        "type", "string",
+                                                                                        "label", "S3 location",
+                                                                                        "value", outputLocation));
+
+                                                                        return ProvisionInfo.builder()
+                                                                                .privateInfo(Optional.of(privateInfo))
+                                                                                .publicInfo(Optional.of(publicInfo))
+                                                                                .build();
+                                                                    }));
                                                 })))));
     }
 

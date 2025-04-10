@@ -1,6 +1,6 @@
-<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/26.0.16 Chrome/132.0.6834.196 Electron/34.2.0 Safari/537.36" version="26.0.16" pages="3">
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/26.2.2 Chrome/134.0.6998.178 Electron/35.1.2 Safari/537.36" version="26.2.2" pages="3">
   <diagram name="Output Port - Provisioning" id="Y5SEAD-YUePGe5ql00I2">
-    <mxGraphModel dx="2246" dy="782" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" background="#ffffff" math="0" shadow="0">
+    <mxGraphModel dx="3237" dy="1127" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" background="#ffffff" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -179,7 +179,7 @@
         <mxCell id="DAHZ6cSy4LCFdvAoDttp-77" value="7 - Manage configured permissions &lt;br&gt;(not implemented)" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;align=left;fontSize=14;spacingLeft=6;container=0;" parent="1" vertex="1">
           <mxGeometry x="137.37" y="1267" width="377.37" height="45" as="geometry" />
         </mxCell>
-        <mxCell id="J0akzRsXlhWtxxl50ZCP-10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;endArrow=none;startFill=0;curved=1;" edge="1" parent="1" source="DAHZ6cSy4LCFdvAoDttp-78" target="J0akzRsXlhWtxxl50ZCP-1">
+        <mxCell id="J0akzRsXlhWtxxl50ZCP-10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;endArrow=none;startFill=0;curved=1;" parent="1" source="DAHZ6cSy4LCFdvAoDttp-78" target="J0akzRsXlhWtxxl50ZCP-1" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="DAHZ6cSy4LCFdvAoDttp-78" value="6 - Create or replace view" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;align=left;fontSize=14;spacingLeft=6;container=0;" parent="1" vertex="1">
@@ -243,37 +243,46 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="J0akzRsXlhWtxxl50ZCP-1" value="Create or replace view" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;fillColor=none;" vertex="1" parent="1">
+        <mxCell id="J0akzRsXlhWtxxl50ZCP-1" value="Create or replace view" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;fillColor=none;" parent="1" vertex="1">
           <mxGeometry x="640" y="1380" width="800" height="370" as="geometry" />
         </mxCell>
-        <mxCell id="J0akzRsXlhWtxxl50ZCP-6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="J0akzRsXlhWtxxl50ZCP-2" target="J0akzRsXlhWtxxl50ZCP-3">
+        <mxCell id="J0akzRsXlhWtxxl50ZCP-6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" parent="1" source="J0akzRsXlhWtxxl50ZCP-2" target="J0akzRsXlhWtxxl50ZCP-3" edge="1">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="770" y="1502" />
+              <mxPoint x="755" y="1470" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="J0akzRsXlhWtxxl50ZCP-7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="J0akzRsXlhWtxxl50ZCP-2" target="J0akzRsXlhWtxxl50ZCP-4">
+        <mxCell id="8kSuWa_G9D0dQHTiPxHh-8" value="Yes" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="J0akzRsXlhWtxxl50ZCP-6">
+          <mxGeometry x="-0.5294" y="2" relative="1" as="geometry">
+            <mxPoint y="1" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="J0akzRsXlhWtxxl50ZCP-7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="J0akzRsXlhWtxxl50ZCP-2" target="J0akzRsXlhWtxxl50ZCP-4" edge="1">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="770" y="1660" />
-              <mxPoint x="910" y="1660" />
+              <mxPoint x="755" y="1660" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="J0akzRsXlhWtxxl50ZCP-2" value="Is &#39;enforceLakeFormation&#39;&lt;div&gt;set to true?&lt;/div&gt;" style="rhombus;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-          <mxGeometry x="680" y="1493.5" width="180" height="145" as="geometry" />
+        <mxCell id="8kSuWa_G9D0dQHTiPxHh-9" value="No" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="J0akzRsXlhWtxxl50ZCP-7">
+          <mxGeometry x="-0.5921" y="1" relative="1" as="geometry">
+            <mxPoint y="1" as="offset" />
+          </mxGeometry>
         </mxCell>
-        <mxCell id="J0akzRsXlhWtxxl50ZCP-3" value="Create output port view" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+        <mxCell id="J0akzRsXlhWtxxl50ZCP-2" value="Does the source table have permissions enabled&lt;div&gt;&amp;nbsp;for the principal &quot;IAMAllowedPrincipals&quot;?&lt;/div&gt;" style="rhombus;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="650" y="1493.5" width="210" height="145" as="geometry" />
+        </mxCell>
+        <mxCell id="J0akzRsXlhWtxxl50ZCP-3" value="Create output port view" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
           <mxGeometry x="910" y="1440" width="200" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="J0akzRsXlhWtxxl50ZCP-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="J0akzRsXlhWtxxl50ZCP-4" target="J0akzRsXlhWtxxl50ZCP-5">
+        <mxCell id="J0akzRsXlhWtxxl50ZCP-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="J0akzRsXlhWtxxl50ZCP-4" target="J0akzRsXlhWtxxl50ZCP-5" edge="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="J0akzRsXlhWtxxl50ZCP-4" value="Register source table location as data lake location in Lake Formation enabling hybrid access mode" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+        <mxCell id="J0akzRsXlhWtxxl50ZCP-4" value="Register source table location as data lake location in Lake Formation enabling hybrid access mode" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
           <mxGeometry x="910" y="1630" width="200" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="J0akzRsXlhWtxxl50ZCP-5" value="Create multi-dialect output port view" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+        <mxCell id="J0akzRsXlhWtxxl50ZCP-5" value="Create multi-dialect output port view" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
           <mxGeometry x="1160" y="1630" width="200" height="60" as="geometry" />
         </mxCell>
       </root>

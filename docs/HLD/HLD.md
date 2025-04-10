@@ -34,7 +34,7 @@ The **Athena Tech Adapter** provides integration with Amazon Athena to manage da
 ---
 
 ## Provisioning
-![HLD_provision.png](img/HLD_provision.png)
+![HLD_provision.png](../img/HLD_provision.png)
 
 This flow enables the creation of Athena views.
 
@@ -46,14 +46,14 @@ The main operations executed are:
     2. if it does not exist, validation will only succeed if a data contract schema has been provided (which will be used to create the table)
 - Database creation (internal and/or consumable) if not present in the AWS catalog 
 - Creation of source table if it does not exist
-- Creation or updating of the view:
-  - if `ENFORCE_LAKE_FORMATION` environment variable is true, then the location of the source table is registered in Lake Formation enabling hybrid access mode. The view is created as a multi dialect view. Please refer to the [official documentation](https://docs.aws.amazon.com/athena/latest/ug/views-glue.html) for more information about multi dialect views.
-  - if `ENFORCE_LAKE_FORMATION` environment variable is not true, the view will be created in standard mode (`CREATE OR REPLACE VIEW ...`)
+- Creation or updating of the view: the process checks whether the source table has Lake Formation permissions granted to `IAMAllowedPrincipals`
+    - If **yes**, a **VIEW** is created, and its permissions are expected to be managed via IAM.
+    - If **no**, the location of the source table is registered in Lake Formation enabling hybrid access mode. The view is created as a **MULTI-DIALECT VIEW**, and its permissions will be managed through AWS Lake Formation. Please refer to the [official documentation](https://docs.aws.amazon.com/athena/latest/ug/views-glue.html) for more information about multi dialect views.
 - Permission management according to configuration (to be implemented)
 
 ## Unprovisioning
 
-![HLD_unprovision.png](img/HLD_unprovision.png)
+![HLD_unprovision.png](../img/HLD_unprovision.png)
 
 This flow allows to delete the view created in the provisioning step.
 

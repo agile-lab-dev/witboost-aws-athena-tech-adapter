@@ -45,13 +45,17 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.athena.AthenaClient;
 import software.amazon.awssdk.services.athena.model.Column;
 import software.amazon.awssdk.services.athena.model.TableMetadata;
+import software.amazon.awssdk.services.lakeformation.LakeFormationClient;
+import software.amazon.awssdk.services.lakeformation.model.DataLakePrincipal;
+import software.amazon.awssdk.services.lakeformation.model.DataLakeResourceType;
+import software.amazon.awssdk.services.lakeformation.model.PrincipalResourcePermissions;
+import software.amazon.awssdk.services.lakeformation.model.Resource;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
@@ -108,8 +112,6 @@ class OutputPortProvisionServiceTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-
-        ReflectionTestUtils.setField(outputPortProvisionService, "enforceLakeFormation", "false");
 
         when(athenaClientProvider.apply(any(Region.class))).thenReturn(athenaClient);
         when(s3ClientProvider.apply(any(Region.class))).thenReturn(s3Client);
@@ -180,6 +182,15 @@ class OutputPortProvisionServiceTest {
                         any(TableFormat.class),
                         anyList()))
                 .thenReturn(Either.right(null));
+        PrincipalResourcePermissions principalResourcePermissions =
+                PrincipalResourcePermissions.builder().build();
+        when(lakeFormationManager.listPermissions(
+                        any(LakeFormationClient.class),
+                        any(DataLakePrincipal.class),
+                        any(Resource.class),
+                        eq(DataLakeResourceType.TABLE),
+                        anyString()))
+                .thenReturn(Either.right(List.of(principalResourcePermissions)));
         when(athenaManager.createView(
                         any(AthenaClient.class), anyString(), any(AthenaTable.class), any(AthenaView.class), anyList()))
                 .thenReturn(Either.right(null));
@@ -222,6 +233,17 @@ class OutputPortProvisionServiceTest {
                         any(TableFormat.class),
                         anyList()))
                 .thenReturn(Either.right(null));
+
+        PrincipalResourcePermissions principalResourcePermissions =
+                PrincipalResourcePermissions.builder().build();
+        when(lakeFormationManager.listPermissions(
+                        any(LakeFormationClient.class),
+                        any(DataLakePrincipal.class),
+                        any(Resource.class),
+                        eq(DataLakeResourceType.TABLE),
+                        anyString()))
+                .thenReturn(Either.right(List.of(principalResourcePermissions)));
+
         when(athenaManager.createView(
                         any(AthenaClient.class), anyString(), any(AthenaTable.class), any(AthenaView.class), anyList()))
                 .thenReturn(Either.right(null));
@@ -374,6 +396,16 @@ class OutputPortProvisionServiceTest {
                         any(TableFormat.class),
                         anyList()))
                 .thenReturn(Either.right(null));
+        PrincipalResourcePermissions principalResourcePermissions =
+                PrincipalResourcePermissions.builder().build();
+        when(lakeFormationManager.listPermissions(
+                        any(LakeFormationClient.class),
+                        any(DataLakePrincipal.class),
+                        any(Resource.class),
+                        eq(DataLakeResourceType.TABLE),
+                        anyString()))
+                .thenReturn(Either.right(List.of(principalResourcePermissions)));
+
         // Simulate failure during view creation.
         FailedOperation viewFailure = new FailedOperation(
                 "View creation error", Collections.singletonList(new Problem("View creation error")));
@@ -491,10 +523,9 @@ class OutputPortProvisionServiceTest {
     }
 
     @Test
-    public void testCreateView_WhenEnforceLakeFormationIsTrue() throws Exception {
+    public void testCreateView_WhenLFEnforced() throws Exception {
 
         ProvisioningRequest provisioningRequest = createProvisioningRequest("/descriptor_outputport.yml");
-        ReflectionTestUtils.setField(outputPortProvisionService, "enforceLakeFormation", "true");
 
         when(outputPortValidationService.validate(any(OperationRequest.class), eq(OperationType.PROVISION)))
                 .thenReturn(Either.right(null));
@@ -513,6 +544,14 @@ class OutputPortProvisionServiceTest {
                         any(TableFormat.class),
                         anyList()))
                 .thenReturn(Either.right(null));
+        when(lakeFormationManager.listPermissions(
+                        any(LakeFormationClient.class),
+                        any(DataLakePrincipal.class),
+                        any(Resource.class),
+                        eq(DataLakeResourceType.TABLE),
+                        anyString()))
+                .thenReturn(Either.right(Collections.emptyList()));
+
         when(athenaManager.getTableLocation(any(), any())).thenReturn(Either.right("s3://bucket-location"));
         when(lakeFormationManager.registerDataLakeLocation(any(), any(), any())).thenReturn(Either.right(null));
         when(athenaManager.createMultiDialectView(any(), any(), any(), any(), any()))
@@ -530,7 +569,6 @@ class OutputPortProvisionServiceTest {
     @Test
     void testProvisionExceptionGettingStsAccount_shouldReturnFailedOperation() throws Exception {
 
-        ReflectionTestUtils.setField(outputPortProvisionService, "enforceLakeFormation", "true");
         ProvisioningRequest provisioningRequest = createProvisioningRequest("/descriptor_outputport.yml");
 
         when(outputPortValidationService.validate(any(OperationRequest.class), eq(OperationType.PROVISION)))
@@ -539,6 +577,15 @@ class OutputPortProvisionServiceTest {
                 .thenReturn(Either.right(false));
         when(athenaManager.createDatabase(any(AthenaClient.class), anyString(), anyString(), anyString()))
                 .thenReturn(Either.right(null));
+
+        when(lakeFormationManager.listPermissions(
+                        any(LakeFormationClient.class),
+                        any(DataLakePrincipal.class),
+                        any(Resource.class),
+                        eq(DataLakeResourceType.TABLE),
+                        anyString()))
+                .thenReturn(Either.right(Collections.emptyList()));
+
         TableMetadata tableMetadata = TableMetadata.builder()
                 .name("users")
                 .columns(List.of(

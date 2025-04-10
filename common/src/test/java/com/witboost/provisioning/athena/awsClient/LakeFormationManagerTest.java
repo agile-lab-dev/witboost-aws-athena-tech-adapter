@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import com.witboost.provisioning.model.common.FailedOperation;
 import io.vavr.control.Either;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.services.lakeformation.LakeFormationClient;
@@ -88,5 +89,54 @@ class LakeFormationManagerTest {
                 lakeFormationManager.assignPermissions(lakeFormationClient, principal, resource, permission);
 
         assertTrue(result.isLeft(), "Expected assignPermissions to fail on unexpected error");
+    }
+
+    @Test
+    void listPermissions_success_returnsRight() {
+        DataLakePrincipal principal = DataLakePrincipal.builder()
+                .dataLakePrincipalIdentifier("testUser")
+                .build();
+        Resource resource = Resource.builder()
+                .database(DatabaseResource.builder().name("testDatabase").build())
+                .build();
+        DataLakeResourceType resourceType = DataLakeResourceType.DATABASE;
+        String resourceName = "testDatabase";
+
+        PrincipalResourcePermissions permissions = PrincipalResourcePermissions.builder()
+                .principal(principal)
+                .permissions(Permission.SELECT)
+                .build();
+
+        ListPermissionsResponse response = ListPermissionsResponse.builder()
+                .principalResourcePermissions(List.of(permissions))
+                .build();
+
+        when(lakeFormationClient.listPermissions(any(ListPermissionsRequest.class)))
+                .thenReturn(response);
+
+        Either<FailedOperation, List<PrincipalResourcePermissions>> result = lakeFormationManager.listPermissions(
+                lakeFormationClient, principal, resource, resourceType, resourceName);
+
+        assertTrue(result.isRight(), "Expected listPermissions to succeed");
+        assertEquals(1, result.get().size(), "Expected one permission entry in result");
+    }
+
+    @Test
+    void listPermissions_unexpectedError_returnsLeft() {
+        DataLakePrincipal principal = DataLakePrincipal.builder()
+                .dataLakePrincipalIdentifier("testUser")
+                .build();
+        Resource resource = Resource.builder()
+                .database(DatabaseResource.builder().name("testDatabase").build())
+                .build();
+        DataLakeResourceType resourceType = DataLakeResourceType.DATABASE;
+        String resourceName = "testDatabase";
+
+        doThrow(RuntimeException.class).when(lakeFormationClient).listPermissions(any(ListPermissionsRequest.class));
+
+        Either<FailedOperation, List<PrincipalResourcePermissions>> result = lakeFormationManager.listPermissions(
+                lakeFormationClient, principal, resource, resourceType, resourceName);
+
+        assertTrue(result.isLeft(), "Expected listPermissions to fail on unexpected error");
     }
 }

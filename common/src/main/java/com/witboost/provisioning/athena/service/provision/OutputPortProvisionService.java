@@ -26,21 +26,21 @@ import java.util.function.Function;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.athena.AthenaClient;
 import software.amazon.awssdk.services.glue.GlueClient;
 import software.amazon.awssdk.services.lakeformation.LakeFormationClient;
+import software.amazon.awssdk.services.lakeformation.model.DataLakePrincipal;
+import software.amazon.awssdk.services.lakeformation.model.DataLakeResourceType;
+import software.amazon.awssdk.services.lakeformation.model.Resource;
+import software.amazon.awssdk.services.lakeformation.model.TableResource;
 import software.amazon.awssdk.services.sts.StsClient;
 
 @Service
 public class OutputPortProvisionService implements ProvisionService {
 
     private final Logger logger = LoggerFactory.getLogger(OutputPortProvisionService.class);
-
-    @Value("${enforceLakeFormation: false}")
-    private String enforceLakeFormation;
 
     private final OutputPortValidationService outputPortValidationService;
     private final Function<Region, AthenaClient> athenaClientProvider;
@@ -248,28 +248,55 @@ public class OutputPortProvisionService implements ProvisionService {
             AthenaTable athenaTable,
             AthenaView athenaView,
             List<AthenaColumn> columns) {
-
-        if (!enforceLakeFormation.equals("true"))
-            return athenaManager.createView(athenaClient, outputLocation, athenaTable, athenaView, columns);
-
         try {
-            String accountId = stsClient.getCallerIdentity().account();
 
-            String awsServiceRoleForLakeFormationDataAccessArn =
-                    "arn:aws:iam::{accountID}:role/aws-service-role/lakeformation.amazonaws.com/AWSServiceRoleForLakeFormationDataAccess"
-                            .replace("{accountID}", accountId);
+            DataLakePrincipal dataLakePrincipal = DataLakePrincipal.builder()
+                    .dataLakePrincipalIdentifier("IAM_ALLOWED_PRINCIPALS")
+                    .build();
 
-            return athenaManager
-                    .getTableLocation(glueClient, athenaTable)
-                    .flatMap(tableLocation -> extractS3Arn(tableLocation).flatMap(locationArn -> lakeFormationManager
-                            .registerDataLakeLocation(
-                                    lakeFormationClient, locationArn, awsServiceRoleForLakeFormationDataAccessArn)
-                            .flatMap(ignored -> athenaManager.createMultiDialectView(
-                                    athenaClient, outputLocation, athenaTable, athenaView, columns))));
+            TableResource tableResource = TableResource.builder()
+                    .name(athenaTable.getName())
+                    .databaseName(athenaTable.getDatabase())
+                    .build();
+
+            Resource resource = Resource.builder().table(tableResource).build();
+
+            return lakeFormationManager
+                    .listPermissions(
+                            lakeFormationClient,
+                            dataLakePrincipal,
+                            resource,
+                            DataLakeResourceType.TABLE,
+                            athenaTable.getName())
+                    .flatMap(permissionsIAMAllowedPrincipals -> {
+                        if (!permissionsIAMAllowedPrincipals.isEmpty()) {
+                            return athenaManager.createView(
+                                    athenaClient, outputLocation, athenaTable, athenaView, columns);
+                        }
+
+                        String accountId = stsClient.getCallerIdentity().account();
+                        String awsServiceRoleForLakeFormationDataAccessArn = "arn:aws:iam::" + accountId
+                                + ":role/aws-service-role/lakeformation.amazonaws.com/AWSServiceRoleForLakeFormationDataAccess";
+
+                        return athenaManager
+                                .getTableLocation(glueClient, athenaTable)
+                                .flatMap(tableLocation -> extractS3Arn(tableLocation)
+                                        .flatMap(locationArn -> lakeFormationManager
+                                                .registerDataLakeLocation(
+                                                        lakeFormationClient,
+                                                        locationArn,
+                                                        awsServiceRoleForLakeFormationDataAccessArn)
+                                                .flatMap(ignored -> athenaManager.createMultiDialectView(
+                                                        athenaClient,
+                                                        outputLocation,
+                                                        athenaTable,
+                                                        athenaView,
+                                                        columns))));
+                    });
 
         } catch (Exception e) {
             String error = String.format(
-                    "An unexpected error occurred while getting AWS caller identity. Details: %s", e.getMessage());
+                    "An unexpected error occurred while creating Athena view. Details: %s", e.getMessage());
             logger.error(error, e);
             return Either.left(new FailedOperation(error, List.of(new Problem(error, e))));
         }

@@ -19,5 +19,4 @@ springdoc:
   swagger-ui:
     path: /docs
 
-enforceLakeFormation: ${ENFORCE_LAKE_FORMATION}
 queryTimeoutSeconds: 30

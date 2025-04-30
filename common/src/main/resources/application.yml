@@ -19,4 +19,5 @@ springdoc:
   swagger-ui:
     path: /docs
 
-queryTimeoutSeconds: 30
+misc:
+  queryTimeoutSeconds: 30

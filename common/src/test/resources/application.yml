@@ -1,1 +1,2 @@
-queryTimeoutSeconds: 60
+misc:
+  queryTimeoutSeconds: 30

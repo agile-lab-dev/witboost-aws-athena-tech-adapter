@@ -12,9 +12,11 @@ This repository is part of our [Starter Kit](https://github.com/agile-lab-dev/wi
 
 - [Overview](#overview)
 - [Building](#building)
+- [Configuring](#configuring)
 - [Running](#running)
 - [OpenTelemetry Setup](docs/opentelemetry.md)
 - [Deploying](#deploying)
+- [HLD](docs/HLD/HLD.md)
 
 
 ## Overview
@@ -153,16 +155,39 @@ export PROVISIONER_VERSION=$(date +%Y%m%d-%H%M%S);
 
 **CI/CD:** the pipeline is based on GitLab CI as that's what we use internally. It's configured by the `.gitlab-ci.yaml` file in the root of the repository. You can use that as a starting point for your customizations.
 
-### Implementing server logic
+## Configuring
 
-The Tech Adapter utilizes the Java Tech Adapter Framework, which provides abstraction of the API layer, error handling, model definition, and more; allowing Tech Adapter developers to focus only on implementing the specific business logic related to the technology for which the Tech Adapter is being developed. For this, four interfaces need to be implemented and injected via Spring beans in order to make your Tech Adapter work:
+Application configuration is handled using the features provided by Spring Boot. You can find the default settings in the [application.yml](common/src/main/resources/application.yml). Customize it and use the options provided by the framework according to your needs.
 
-- **ProvisionService**: Provides the business logic for component provision, unprovision, update access control, and reverse provisioning.
-- **ComponentValidationService**: Provides the business logic for component validation, executed for validation and (un)provisioning operations.
-- **ComponentClassProvider**: Interface that maps a component's useCaseTemplateId with a Class that represents the Component model, allowing to use extensions of the provided Components.
-- **SpecificClassProvider**: Interface that maps a component's useCaseTemplateId with a Class that represents the Specific model.
+### Authentication
 
-Follow the Java Tech Adapter Framework [usage guide](https://github.com/agile-lab-dev/witboost-java-tech-adapter-framework/tree/master/docs/usage.md) for more information on how to develop your Tech Adapter.
+#### Default Credential Provider Chain
+The application leverages the **Default Credential Provider Chain** provided by the AWS SDK. This chain enables the microservice to automatically resolve the most appropriate credentials based on the execution context, without the need for manual configuration.
+For more details, you can refer to the [AWS SDK official documentation](https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html).
+
+### IAM permissions
+
+To ensure the proper functioning of the microservice, the IAM role assumed by the microservice must include permissions listed [here](docs/permissionsList.md).
+
+
+### Miscellaneous Configurations
+#### Query Timeout Configuration
+
+The tech adapter provides a configurable timeout for the execution of Athena queries. This setting is controlled via the `misc.queryTimeoutSeconds` property in the `application.yml` file.
+##### Configuration:
+To set the query timeout, add the following property to your `application.yml` file:
+``` yaml
+misc:
+  queryTimeoutSeconds: <timeout-in-seconds>
+```
+- **Default Value**: The default value for `queryTimeoutSeconds` is `60`, which means queries will timeout after 60 seconds unless explicitly configured otherwise.
+- **Validation**: If the value set is less than or equal to `0`, the application will throw an error during startup with the following exception:
+``` 
+  Query timeout must be greater than zero. Please check the 'misc.queryTimeoutSeconds' configuration in the application.yml.
+```
+This ensures that the application starts with a valid configuration and avoids runtime issues caused by invalid settings.
+
+
 
 ## Running
 

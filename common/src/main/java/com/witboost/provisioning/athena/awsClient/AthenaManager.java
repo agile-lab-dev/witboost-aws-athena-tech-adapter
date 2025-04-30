@@ -35,14 +35,14 @@ public class AthenaManager {
 
     private final Logger logger = LoggerFactory.getLogger(AthenaManager.class);
 
-    @Value("${queryTimeoutSeconds:60}")
+    @Value("${misc.queryTimeoutSeconds:60}")
     private int queryTimeoutSeconds;
 
     @PostConstruct
     public void validateTimeout() {
         if (queryTimeoutSeconds <= 0) {
             throw new IllegalArgumentException("Query timeout must be greater than zero. "
-                    + "Please check the 'QUERY_TIMEOUT_SECONDS' environment variable or application configuration.");
+                    + "Please check the 'misc.queryTimeoutSeconds' configuration in the application.yml file.");
         }
     }
 

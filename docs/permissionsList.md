@@ -4,6 +4,12 @@ Below is an example of an IAM policy including the permissions to be assigned to
 
 For simplicity, resources are indicated with `"*"`. Restrict the list according to your needs
 
+**Note:**
+The placeholders `{accountID}` and `{region}` in the policy below must be replaced with values specific to your AWS setup:
+- **`{accountID}`**: Replace this with your AWS account ID.
+- **`{region}`**: Replace this with the AWS region where your resources are located (e.g., `eu-west-1`, `eu-central-1`, etc.).
+
+
 ```json
 {
   "Version": "2012-10-17",
@@ -31,9 +37,9 @@ For simplicity, resources are indicated with `"*"`. Restrict the list according 
         "glue:GetTable"
       ],
       "Resource": [
-				"arn:aws:glue:{region}:{accountID}:catalog",
-				"arn:aws:glue:{region}:{accountID}:database/*",
-				"arn:aws:glue:{region}:{accountID}:table/*"
+        "arn:aws:glue:{region}:{accountID}:catalog",
+        "arn:aws:glue:{region}:{accountID}:database/*",
+        "arn:aws:glue:{region}:{accountID}:table/*"
       ]
     },
     {
